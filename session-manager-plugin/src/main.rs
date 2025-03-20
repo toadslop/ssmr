@@ -9,10 +9,9 @@ const LEGACY_ARGUMENT_LENGTH: usize = 4;
 
 fn main() {
     env_logger::init();
-
     let args: Vec<String> = args().collect();
 
-    let command = match validate_args(&args) {
+    let command = match validate_args(args) {
         Ok(command) => command,
         Err(err) => {
             eprintln!("{}", err);
