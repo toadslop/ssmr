@@ -8,4 +8,8 @@ pub enum Error {
     EnvVar(#[from] std::env::VarError),
     #[error("Found more args than expected")]
     IncorrectNumArgs,
+    #[error("Failed to deserialize start session args: {0}")]
+    StartSessionArgsDeserialization(#[from] serde_json::Error),
+    #[error("Expected start session args to be a JSON object with key Target")]
+    InvalidStartSessionObject,
 }

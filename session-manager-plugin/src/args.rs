@@ -1,5 +1,7 @@
 use std::{env, mem};
 
+use serde_json::Value;
+
 use crate::{LEGACY_ARGUMENT_LENGTH, command::Command, error::Error};
 
 pub fn validate_args(mut args: Vec<String>) -> Result<Command, Error> {
@@ -44,7 +46,7 @@ impl StartSessionArgs {
                 2 => start_session_args.region = mem::take(&mut args[2]),
                 3 => start_session_args.operation_name = mem::take(&mut args[3]),
                 4 => start_session_args.profile = mem::take(&mut args[4]),
-                5 => start_session_args.target = todo!("deserialize target"),
+                5 => start_session_args.target = Self::process_target_arg(&args[5])?,
                 6 => start_session_args.ssm_endpoint = mem::take(&mut args[6]),
                 _ => Err(Error::IncorrectNumArgs)?,
             }
@@ -64,5 +66,22 @@ impl StartSessionArgs {
         };
 
         Ok(response)
+    }
+
+    fn process_target_arg(arg: &str) -> Result<String, Error> {
+        let target: Value = serde_json::from_str(arg)?;
+
+        let target = match target {
+            Value::Object(obj) => obj,
+            _ => Err(Error::InvalidStartSessionObject)?,
+        };
+
+        let target = target
+            .get("Target")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .ok_or(Error::InvalidStartSessionObject)?;
+
+        Ok(target)
     }
 }
