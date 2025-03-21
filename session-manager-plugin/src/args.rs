@@ -85,3 +85,116 @@ impl StartSessionArgs {
         Ok(target)
     }
 }
+
+#[cfg(test)]
+mod test {
+    const SESSION_MANAGER_PLUGIN: &str = "session-manager-plugin";
+    #[test]
+    fn validate_input_with_no_input_argument() {
+        let args = vec![SESSION_MANAGER_PLUGIN.to_string()];
+        let result = super::validate_args(args);
+        assert!(result.is_ok());
+        assert!(matches!(
+            result.unwrap(),
+            super::Command::ReportInstallSuccess
+        ));
+    }
+
+    #[test]
+    fn validate_args_with_wrong_input_argument() {
+        let wrong_argument = "wrong-argument".to_string();
+        let args = vec![SESSION_MANAGER_PLUGIN.to_string(), wrong_argument.clone()];
+        let result = super::validate_args(args);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            super::Error::UnknownOperation(arg) if arg == wrong_argument
+        ));
+    }
+
+    #[test]
+    fn validate_input() {
+        let session_response = "{\"SessionId\": \"user-012345\", \"TokenValue\": \"ABCD\", \"StreamUrl\": \"wss://ssmmessages.us-east-1.amazonaws.com/v1/data-channel/user-012345?role=publish_subscribe\"}";
+        let region = "us-east-1";
+        let operation_name = "StartSession";
+        let target = "i-0123abc";
+        let ssm_endpoint = "https://ssm.us-east-1.amazonaws.com";
+        let args = vec![
+            SESSION_MANAGER_PLUGIN.to_string(),
+            session_response.to_string(),
+            region.to_string(),
+            operation_name.to_string(),
+            "".to_string(),
+            format!("{{\"Target\": \"{target}\"}}"),
+            ssm_endpoint.to_string(),
+        ];
+        let result = super::validate_args(args);
+        assert!(result.is_ok());
+
+        let result = result.unwrap();
+
+        assert!(matches!(result, super::Command::StartSession(_)));
+
+        let args = match result {
+            super::Command::StartSession(args) => args,
+            _ => unreachable!("Already checked that the result is StartSession"),
+        };
+
+        assert_eq!(args.response, session_response.as_bytes());
+        assert!(!args.is_aws_cli_upgrade_needed);
+        assert_eq!(args.region, region);
+        assert_eq!(args.operation_name, operation_name);
+        assert!(args.profile.is_empty());
+        assert_eq!(args.target, target);
+        assert_eq!(args.ssm_endpoint, ssm_endpoint);
+    }
+
+    #[test]
+    fn validate_input_with_env_variable_parameter() {
+        let session_response_env_var = "AWS_SSM_START_SESSION_RESPONSE";
+        let session_response = "{\"SessionId\": \"user-012345\", \"TokenValue\": \"Session-Token\", \"StreamUrl\": \"wss://ssmmessages.us-east-1.amazonaws.com/v1/data-channel/user-012345?role=publish_subscribe\"}";
+
+        unsafe {
+            std::env::set_var(session_response_env_var, session_response);
+        }
+
+        let region = "us-east-1";
+        let operation_name = "StartSession";
+        let target = "i-0123abc";
+        let ssm_endpoint = "https://ssm.us-east-1.amazonaws.com";
+
+        let args = vec![
+            SESSION_MANAGER_PLUGIN.to_string(),
+            session_response_env_var.to_string(),
+            region.to_string(),
+            operation_name.to_string(),
+            "".to_string(),
+            format!("{{\"Target\": \"{target}\"}}"),
+            ssm_endpoint.to_string(),
+        ];
+
+        let result = super::validate_args(args);
+        assert!(result.is_ok());
+
+        let result = result.unwrap();
+
+        assert!(matches!(result, super::Command::StartSession(_)));
+
+        let args = match result {
+            super::Command::StartSession(args) => args,
+            _ => unreachable!("Already checked that the result is StartSession"),
+        };
+
+        assert_eq!(args.response, session_response.as_bytes());
+        assert!(!args.is_aws_cli_upgrade_needed);
+        assert_eq!(args.region, region);
+        assert_eq!(args.operation_name, operation_name);
+        assert!(args.profile.is_empty());
+        assert_eq!(args.target, target);
+        assert_eq!(args.ssm_endpoint, ssm_endpoint);
+
+        unsafe {
+            std::env::remove_var(session_response_env_var);
+        }
+    }
+}
