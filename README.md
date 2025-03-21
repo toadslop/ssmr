@@ -26,5 +26,3 @@ The library crate. Most of the code from the original `session-manager-plugin` w
 Contributions are welcome. To contribute, check the [session-manager-plugin repo](https://github.com/aws/session-manager-plugin), find some code that hasn't been ported yet, and port it over.
 
 Bindings to other languages are also welcome contributions.
-
-THIS IS A TEST
