@@ -22,6 +22,7 @@ pub fn validate_args(mut args: Vec<String>) -> Result<Command, Error> {
 
 #[derive(Debug, Default)]
 pub struct StartSessionArgs {
+    #[allow(dead_code)]
     pub is_aws_cli_upgrade_needed: bool,
     pub response: Vec<u8>,
     pub region: String,
