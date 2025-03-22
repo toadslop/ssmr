@@ -1,10 +1,10 @@
-use crate::args::StartSessionArgs;
+use crate::args::StartSessionParams;
 
 #[derive(Debug)]
 pub enum Command {
     ReportInstallSuccess,
     Version,
-    StartSession(StartSessionArgs),
+    StartSession(StartSessionParams),
 }
 
 impl Command {
@@ -27,6 +27,6 @@ fn report_version() {
     println!("{}", env!("CARGO_PKG_VERSION"));
 }
 
-fn start_session(_args: StartSessionArgs) {
+fn start_session(_args: StartSessionParams) {
     todo!()
 }

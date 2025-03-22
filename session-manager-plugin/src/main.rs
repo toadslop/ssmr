@@ -1,4 +1,5 @@
 #![warn(clippy::all, clippy::pedantic, clippy::cargo)]
+// #![warn(missing_docs)]
 
 use args::validate_args;
 use std::{env::args, process::exit};
