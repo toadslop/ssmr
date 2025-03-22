@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::restriction, clippy::pedantic, clippy::cargo)]
+
 use args::validate_args;
 use std::{env::args, process::exit};
 
