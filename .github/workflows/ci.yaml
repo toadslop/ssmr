@@ -31,6 +31,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v4
       - name: Lint
+        env:
+          RUSTFLAGS: -Dwarnings
         run: cargo clippy --workspace
       - name: Run tests
         run: cargo nextest run
