@@ -12,7 +12,7 @@ pub fn validate_args(mut args: Vec<String>) -> Result<Command, Error> {
             Err(Error::UnknownOperation(mem::take(&mut args[1])))?
         }
         _ => {
-            let args = StartSessionArgs::validate_args(args)?;
+            let args = StartSessionParams::from_args(args)?;
             Command::StartSession(args)
         }
     };
@@ -21,10 +21,10 @@ pub fn validate_args(mut args: Vec<String>) -> Result<Command, Error> {
 }
 
 #[derive(Debug, Default)]
-pub struct StartSessionArgs {
+pub struct StartSessionParams {
     #[allow(dead_code)]
     pub is_aws_cli_upgrade_needed: bool,
-    pub response: Vec<u8>,
+    pub response: StartSessionOutput,
     pub region: String,
     pub operation_name: String,
     pub profile: String,
@@ -32,40 +32,78 @@ pub struct StartSessionArgs {
     pub ssm_endpoint: String,
 }
 
-impl StartSessionArgs {
+impl StartSessionParams {
     const AWS_SSM_START_SESSION_RESPONSE: &str = "AWS_SSM_START_SESSION_RESPONSE";
 
-    pub fn validate_args(mut args: Vec<String>) -> Result<Self, Error> {
-        let mut start_session_args = StartSessionArgs {
+    pub fn from_args(mut args: Vec<String>) -> Result<Self, Error> {
+        let mut start_session_params = Self {
             is_aws_cli_upgrade_needed: args.len() == LEGACY_ARGUMENT_LENGTH,
             ..Default::default()
         };
 
         for i in 1..args.len() {
             match i {
-                1 => start_session_args.response = Self::process_response_arg(&args[1])?,
-                2 => start_session_args.region = mem::take(&mut args[2]),
-                3 => start_session_args.operation_name = mem::take(&mut args[3]),
-                4 => start_session_args.profile = mem::take(&mut args[4]),
-                5 => start_session_args.target = Self::process_target_arg(&args[5])?,
-                6 => start_session_args.ssm_endpoint = mem::take(&mut args[6]),
+                1 => Self::process_response_arg(&args[1], &mut start_session_params)?,
+                2 => start_session_params.region = mem::take(&mut args[2]),
+                3 => {
+                    start_session_params.operation_name =
+                        Self::process_opname(mem::take(&mut args[3]))?;
+                }
+                4 => start_session_params.profile = mem::take(&mut args[4]),
+                5 => start_session_params.target = Self::process_target_arg(&args[5])?,
+                6 => start_session_params.ssm_endpoint = mem::take(&mut args[6]),
                 _ => Err(Error::IncorrectNumArgs)?,
             }
         }
 
-        Ok(start_session_args)
+        Ok(start_session_params)
     }
 
-    fn process_response_arg(arg: &str) -> Result<Vec<u8>, Error> {
+    fn process_opname(arg: String) -> Result<String, Error> {
+        match arg.as_str() {
+            "StartSession" => Ok(arg),
+            _ => Err(Error::UnknownOperation(arg.to_string())),
+        }
+    }
+
+    fn process_response_arg(
+        arg: &str,
+        start_session_params: &mut StartSessionParams,
+    ) -> Result<(), Error> {
         let response = if arg.starts_with(Self::AWS_SSM_START_SESSION_RESPONSE) {
             let response = env::var(arg)?;
             unsafe { env::remove_var(arg) };
-            response.into_bytes()
+            response
         } else {
-            arg.as_bytes().to_vec()
+            arg.to_string()
         };
 
-        Ok(response)
+        let response: Value = serde_json::from_str(&response)?;
+
+        let response = match response {
+            Value::Object(obj) => obj,
+            _ => Err(Error::InvalidStartSessionResponseObject)?,
+        };
+
+        start_session_params.response.session_id = response
+            .get("SessionId")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .ok_or(Error::InvalidStartSessionResponseObject)?;
+
+        start_session_params.response.token_value = response
+            .get("TokenValue")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .ok_or(Error::InvalidStartSessionResponseObject)?;
+
+        start_session_params.response.stream_url = response
+            .get("StreamUrl")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .ok_or(Error::InvalidStartSessionResponseObject)?;
+
+        Ok(())
     }
 
     fn process_target_arg(arg: &str) -> Result<String, Error> {
@@ -86,9 +124,35 @@ impl StartSessionArgs {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct StartSessionOutput {
+    pub session_id: String,
+    pub token_value: String,
+    pub stream_url: String,
+}
+
 #[cfg(test)]
 mod test {
+    use std::env::VarError;
+
     const SESSION_MANAGER_PLUGIN: &str = "session-manager-plugin";
+    const SESSION_ID: &str = "user-012345";
+    const TOKEN_VALUE: &str = "ABCD";
+    const SESSION_RESPONSE_ENV_VAR: &str = "AWS_SSM_START_SESSION_RESPONSE";
+
+    fn get_stream_url() -> String {
+        format!(
+            "wss://ssmmessages.us-east-1.amazonaws.com/v1/data-channel/{SESSION_ID}?role=publish_subscribe"
+        )
+    }
+
+    fn get_session_response() -> String {
+        let stream_url = get_stream_url();
+        format!(
+            "{{\"SessionId\": \"{SESSION_ID}\", \"TokenValue\": \"{TOKEN_VALUE}\", \"StreamUrl\": \"{stream_url}\"}}"
+        )
+    }
+
     #[test]
     fn validate_input_with_no_input_argument() {
         let args = vec![SESSION_MANAGER_PLUGIN.to_string()];
@@ -114,14 +178,13 @@ mod test {
 
     #[test]
     fn validate_input() {
-        let session_response = "{\"SessionId\": \"user-012345\", \"TokenValue\": \"ABCD\", \"StreamUrl\": \"wss://ssmmessages.us-east-1.amazonaws.com/v1/data-channel/user-012345?role=publish_subscribe\"}";
         let region = "us-east-1";
         let operation_name = "StartSession";
         let target = "i-0123abc";
         let ssm_endpoint = "https://ssm.us-east-1.amazonaws.com";
         let args = vec![
             SESSION_MANAGER_PLUGIN.to_string(),
-            session_response.to_string(),
+            get_session_response(),
             region.to_string(),
             operation_name.to_string(),
             String::default(),
@@ -139,7 +202,9 @@ mod test {
             unreachable!("Already checked that the result is StartSession")
         };
 
-        assert_eq!(args.response, session_response.as_bytes());
+        assert_eq!(args.response.session_id, SESSION_ID);
+        assert_eq!(args.response.stream_url, get_stream_url());
+        assert_eq!(args.response.token_value, TOKEN_VALUE);
         assert!(!args.is_aws_cli_upgrade_needed);
         assert_eq!(args.region, region);
         assert_eq!(args.operation_name, operation_name);
@@ -150,11 +215,8 @@ mod test {
 
     #[test]
     fn validate_input_with_env_variable_parameter() {
-        let session_response_env_var = "AWS_SSM_START_SESSION_RESPONSE";
-        let session_response = "{\"SessionId\": \"user-012345\", \"TokenValue\": \"Session-Token\", \"StreamUrl\": \"wss://ssmmessages.us-east-1.amazonaws.com/v1/data-channel/user-012345?role=publish_subscribe\"}";
-
         unsafe {
-            std::env::set_var(session_response_env_var, session_response);
+            std::env::set_var(SESSION_RESPONSE_ENV_VAR, get_session_response());
         }
 
         let region = "us-east-1";
@@ -164,7 +226,7 @@ mod test {
 
         let args = vec![
             SESSION_MANAGER_PLUGIN.to_string(),
-            session_response_env_var.to_string(),
+            SESSION_RESPONSE_ENV_VAR.to_string(),
             region.to_string(),
             operation_name.to_string(),
             String::default(),
@@ -183,7 +245,9 @@ mod test {
             unreachable!("Already checked that the result is StartSession")
         };
 
-        assert_eq!(args.response, session_response.as_bytes());
+        assert_eq!(args.response.session_id, SESSION_ID);
+        assert_eq!(args.response.stream_url, get_stream_url());
+        assert_eq!(args.response.token_value, TOKEN_VALUE);
         assert!(!args.is_aws_cli_upgrade_needed);
         assert_eq!(args.region, region);
         assert_eq!(args.operation_name, operation_name);
@@ -192,7 +256,46 @@ mod test {
         assert_eq!(args.ssm_endpoint, ssm_endpoint);
 
         unsafe {
-            std::env::remove_var(session_response_env_var);
+            std::env::remove_var(SESSION_RESPONSE_ENV_VAR);
+        }
+    }
+
+    #[test]
+    fn validate_input_with_wrong_env_variable_name() {
+        let wrong_env_name = "WRONG_ENV_NAME";
+        unsafe {
+            std::env::set_var(wrong_env_name, get_session_response());
+        }
+
+        let region = "us-east-1";
+        let operation_name = "StartSession";
+        let target = "i-0123abc";
+        let ssm_endpoint = "https://ssm.us-east-1.amazonaws.com";
+
+        let args = vec![
+            SESSION_MANAGER_PLUGIN.to_string(),
+            wrong_env_name.to_string(),
+            region.to_string(),
+            operation_name.to_string(),
+            String::default(),
+            format!("{{\"Target\": \"{target}\"}}"),
+            ssm_endpoint.to_string(),
+        ];
+
+        let result = super::validate_args(args);
+        dbg!(&result);
+        assert!(result.is_err());
+
+        let result = result.unwrap_err();
+
+        assert!(matches!(result, super::Error::ArgDeserializatonFailure(_)));
+        assert!(matches!(
+            std::env::var(SESSION_RESPONSE_ENV_VAR),
+            Err(VarError::NotPresent)
+        ));
+
+        unsafe {
+            std::env::remove_var(wrong_env_name);
         }
     }
 }

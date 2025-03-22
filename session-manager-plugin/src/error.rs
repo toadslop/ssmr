@@ -9,7 +9,9 @@ pub enum Error {
     #[error("Found more args than expected")]
     IncorrectNumArgs,
     #[error("Failed to deserialize start session args: {0}")]
-    StartSessionArgsDeserialization(#[from] serde_json::Error),
+    ArgDeserializatonFailure(#[from] serde_json::Error),
     #[error("Expected start session args to be a JSON object with key Target")]
     InvalidStartSessionObject,
+    #[error("Expected response for start session to be a JSON object")]
+    InvalidStartSessionResponseObject,
 }
