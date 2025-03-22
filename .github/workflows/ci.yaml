@@ -5,28 +5,33 @@ on:
   push:
     branches: "*"
     paths:
-        - src/**
-        - Cargo.toml
-        - Cargo.lock
+      - session-manager-plugin/**
+      - ssm-lib/**
+      - Cargo.toml
+      - Cargo.lock
   pull_request:
     branches: master
     paths:
-        - src/**
-        - Cargo.toml
-        - Cargo.lock
+      - session-manager-plugin/**
+      - ssm-lib/**
+      - Cargo.toml
+      - Cargo.lock
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-    test:
-        strategy:
-            matrix:
-                os: [ubuntu-latest, windows-latest, macos-latest]
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
-        runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
 
-        steps:
-            - uses: actions/checkout@v4
-            - name: Run tests
-              run: cargo test --verbose
+    steps:
+      - uses: moonrepo/setup-rust@v1
+        with:
+          bins: cargo-nextest
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: cargo nextest run
