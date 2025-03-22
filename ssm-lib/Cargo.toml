@@ -6,7 +6,7 @@ description = "A library for interacting with AWS Systems Manager"
 license = "MIT"
 repository = "https://github.com/toadslop/ssmr"
 readme = "README.md"
-keywords = ["aws", "ssm", "session-manager", "plugin", "rust", "library"]
+keywords = ["aws", "ssm", "session-manager", "plugin", "library"]
 categories = ["web-programming"]
 
 [dependencies]
