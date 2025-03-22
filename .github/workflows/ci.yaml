@@ -26,6 +26,11 @@ jobs:
       - uses: moonrepo/setup-rust@v1
         with:
           bins: cargo-nextest
+          components: clippy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v4
+      - name: Lint
+        run: cargo clippy --workspace
       - name: Run tests
         run: cargo nextest run
