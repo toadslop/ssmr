@@ -21,12 +21,12 @@ pub fn validate_args(mut args: Vec<String>) -> Result<Command, Error> {
 
 #[derive(Debug, Default)]
 pub struct StartSessionParams {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // TODO: remove
     pub is_aws_cli_upgrade_needed: bool,
     pub response: StartSessionOutput,
-    pub region: String,
+    pub region: String, // TODO: original implementation sets this to a global variable; need to evaluate how used and decide implementation
     pub operation_name: String,
-    pub profile: String,
+    pub profile: String, // TODO: original implementation sets this to a global variable; need to evaluate how used and decide implementation
     pub target: String,
     pub ssm_endpoint: String,
 }
@@ -296,53 +296,4 @@ mod test {
             std::env::remove_var(wrong_env_name);
         }
     }
-
-    // todo: port these two tests
-    // func TestExecuteAndStreamMessageResendTimesOut(t *testing.T) {
-    //     sessionMock := &Session{}
-    //     sessionMock.DataChannel = mockDataChannel
-    //     SetupMockActions()
-    //     mockDataChannel.On("Open", mock.Anything).Return(nil)
-
-    //     isStreamMessageResendTimeout := make(chan bool, 1)
-    //     mockDataChannel.On("IsStreamMessageResendTimeout").Return(isStreamMessageResendTimeout)
-
-    //     var wg sync.WaitGroup
-    //     wg.Add(1)
-    //     handleStreamMessageResendTimeout = func(session *Session, log log.T) {
-    //         time.Sleep(10 * time.Millisecond)
-    //         isStreamMessageResendTimeout <- true
-    //         wg.Done()
-    //         return
-    //     }
-
-    //     isSessionTypeSetMock := make(chan bool, 1)
-    //     isSessionTypeSetMock <- true
-    //     mockDataChannel.On("IsSessionTypeSet").Return(isSessionTypeSetMock)
-    //     mockDataChannel.On("GetSessionType").Return("Standard_Stream")
-    //     mockDataChannel.On("GetSessionProperties").Return("SessionProperties")
-
-    //     setSessionHandlersWithSessionType = func(session *Session, log log.T) error {
-    //         return nil
-    //     }
-
-    //     var err error
-    //     go func() {
-    //         err = sessionMock.Execute(logger)
-    //         time.Sleep(200 * time.Millisecond)
-    //     }()
-    //     wg.Wait()
-    //     assert.Nil(t, err)
-    // }
-
-    // func SetupMockActions() {
-    //     mockDataChannel.On("Initialize", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
-    //     mockDataChannel.On("SetWebsocket", mock.Anything, mock.Anything, mock.Anything).Return()
-    //     mockDataChannel.On("GetWsChannel").Return(mockWsChannel)
-    //     mockDataChannel.On("RegisterOutputStreamHandler", mock.Anything, mock.Anything)
-    //     mockDataChannel.On("ResendStreamDataMessageScheduler", mock.Anything).Return(nil)
-
-    //     mockWsChannel.On("SetOnMessage", mock.Anything)
-    //     mockWsChannel.On("SetOnError", mock.Anything)
-    // }
 }
