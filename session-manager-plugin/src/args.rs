@@ -1,6 +1,5 @@
-use std::{env, mem};
-
 use serde_json::Value;
+use std::{env, mem};
 
 use crate::{LEGACY_ARGUMENT_LENGTH, command::Command, error::Error};
 
@@ -12,7 +11,7 @@ pub fn validate_args(mut args: Vec<String>) -> Result<Command, Error> {
             Err(Error::UnknownOperation(mem::take(&mut args[1])))?
         }
         _ => {
-            let args = StartSessionParams::from_args(args)?;
+            let args = StartSessionParams::try_from_args(args)?;
             Command::StartSession(args)
         }
     };
@@ -35,7 +34,7 @@ pub struct StartSessionParams {
 impl StartSessionParams {
     const AWS_SSM_START_SESSION_RESPONSE: &str = "AWS_SSM_START_SESSION_RESPONSE";
 
-    pub fn from_args(mut args: Vec<String>) -> Result<Self, Error> {
+    pub fn try_from_args(mut args: Vec<String>) -> Result<Self, Error> {
         let mut start_session_params = Self {
             is_aws_cli_upgrade_needed: args.len() == LEGACY_ARGUMENT_LENGTH,
             ..Default::default()
@@ -135,10 +134,11 @@ pub struct StartSessionOutput {
 mod test {
     use std::env::VarError;
 
-    const SESSION_MANAGER_PLUGIN: &str = "session-manager-plugin";
-    const SESSION_ID: &str = "user-012345";
-    const TOKEN_VALUE: &str = "ABCD";
-    const SESSION_RESPONSE_ENV_VAR: &str = "AWS_SSM_START_SESSION_RESPONSE";
+    static SESSION_MANAGER_PLUGIN: &str = "session-manager-plugin";
+    static SESSION_ID: &str = "user-012345";
+    static TOKEN_VALUE: &str = "ABCD";
+    static SESSION_RESPONSE_ENV_VAR: &str = "AWS_SSM_START_SESSION_RESPONSE";
+    static REGION: &str = "us-east-1";
 
     fn get_stream_url() -> String {
         format!(
@@ -178,14 +178,13 @@ mod test {
 
     #[test]
     fn validate_input() {
-        let region = "us-east-1";
         let operation_name = "StartSession";
         let target = "i-0123abc";
         let ssm_endpoint = "https://ssm.us-east-1.amazonaws.com";
         let args = vec![
             SESSION_MANAGER_PLUGIN.to_string(),
             get_session_response(),
-            region.to_string(),
+            REGION.to_string(),
             operation_name.to_string(),
             String::default(),
             format!("{{\"Target\": \"{target}\"}}"),
@@ -206,7 +205,7 @@ mod test {
         assert_eq!(args.response.stream_url, get_stream_url());
         assert_eq!(args.response.token_value, TOKEN_VALUE);
         assert!(!args.is_aws_cli_upgrade_needed);
-        assert_eq!(args.region, region);
+        assert_eq!(args.region, REGION);
         assert_eq!(args.operation_name, operation_name);
         assert!(args.profile.is_empty());
         assert_eq!(args.target, target);
@@ -219,7 +218,6 @@ mod test {
             std::env::set_var(SESSION_RESPONSE_ENV_VAR, get_session_response());
         }
 
-        let region = "us-east-1";
         let operation_name = "StartSession";
         let target = "i-0123abc";
         let ssm_endpoint = "https://ssm.us-east-1.amazonaws.com";
@@ -227,7 +225,7 @@ mod test {
         let args = vec![
             SESSION_MANAGER_PLUGIN.to_string(),
             SESSION_RESPONSE_ENV_VAR.to_string(),
-            region.to_string(),
+            REGION.to_string(),
             operation_name.to_string(),
             String::default(),
             format!("{{\"Target\": \"{target}\"}}"),
@@ -249,7 +247,7 @@ mod test {
         assert_eq!(args.response.stream_url, get_stream_url());
         assert_eq!(args.response.token_value, TOKEN_VALUE);
         assert!(!args.is_aws_cli_upgrade_needed);
-        assert_eq!(args.region, region);
+        assert_eq!(args.region, REGION);
         assert_eq!(args.operation_name, operation_name);
         assert!(args.profile.is_empty());
         assert_eq!(args.target, target);
@@ -298,4 +296,53 @@ mod test {
             std::env::remove_var(wrong_env_name);
         }
     }
+
+    // todo: port these two tests
+    // func TestExecuteAndStreamMessageResendTimesOut(t *testing.T) {
+    //     sessionMock := &Session{}
+    //     sessionMock.DataChannel = mockDataChannel
+    //     SetupMockActions()
+    //     mockDataChannel.On("Open", mock.Anything).Return(nil)
+
+    //     isStreamMessageResendTimeout := make(chan bool, 1)
+    //     mockDataChannel.On("IsStreamMessageResendTimeout").Return(isStreamMessageResendTimeout)
+
+    //     var wg sync.WaitGroup
+    //     wg.Add(1)
+    //     handleStreamMessageResendTimeout = func(session *Session, log log.T) {
+    //         time.Sleep(10 * time.Millisecond)
+    //         isStreamMessageResendTimeout <- true
+    //         wg.Done()
+    //         return
+    //     }
+
+    //     isSessionTypeSetMock := make(chan bool, 1)
+    //     isSessionTypeSetMock <- true
+    //     mockDataChannel.On("IsSessionTypeSet").Return(isSessionTypeSetMock)
+    //     mockDataChannel.On("GetSessionType").Return("Standard_Stream")
+    //     mockDataChannel.On("GetSessionProperties").Return("SessionProperties")
+
+    //     setSessionHandlersWithSessionType = func(session *Session, log log.T) error {
+    //         return nil
+    //     }
+
+    //     var err error
+    //     go func() {
+    //         err = sessionMock.Execute(logger)
+    //         time.Sleep(200 * time.Millisecond)
+    //     }()
+    //     wg.Wait()
+    //     assert.Nil(t, err)
+    // }
+
+    // func SetupMockActions() {
+    //     mockDataChannel.On("Initialize", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
+    //     mockDataChannel.On("SetWebsocket", mock.Anything, mock.Anything, mock.Anything).Return()
+    //     mockDataChannel.On("GetWsChannel").Return(mockWsChannel)
+    //     mockDataChannel.On("RegisterOutputStreamHandler", mock.Anything, mock.Anything)
+    //     mockDataChannel.On("ResendStreamDataMessageScheduler", mock.Anything).Return(nil)
+
+    //     mockWsChannel.On("SetOnMessage", mock.Anything)
+    //     mockWsChannel.On("SetOnError", mock.Anything)
+    // }
 }

@@ -1,3 +1,6 @@
+use serde_json::Error;
+use ssm_lib::session::SessionBuilder;
+
 use crate::args::StartSessionParams;
 
 #[derive(Debug)]
@@ -8,12 +11,13 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn execute(self) {
+    pub fn execute(self) -> Result<(), Error> {
         match self {
             Command::ReportInstallSuccess => report_install_success(),
             Command::Version => report_version(),
-            Command::StartSession(args) => start_session(args),
-        }
+            Command::StartSession(args) => start_session(args)?,
+        };
+        Ok(())
     }
 }
 
@@ -27,6 +31,13 @@ fn report_version() {
     println!("{}", env!("CARGO_PKG_VERSION"));
 }
 
-fn start_session(_args: StartSessionParams) {
-    todo!()
+#[allow(clippy::unnecessary_wraps)]
+fn start_session(args: StartSessionParams) -> Result<(), Error> {
+    let _session = SessionBuilder::new()
+        .with_stream_url(args.response.stream_url)
+        .build();
+
+    // TODO: Implement the rest of the session creation logic
+    // TODO: Implement session handling logic
+    Ok(())
 }
