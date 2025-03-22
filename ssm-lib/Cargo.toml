@@ -2,6 +2,15 @@
 name = "ssm-lib"
 version = "0.1.0"
 edition = "2024"
+description = "A library for interacting with AWS Systems Manager"
+license = "MIT"
+repository = "https://github.com/toadslop/ssmr"
+readme = "README.md"
+keywords = ["aws", "ssm", "session-manager", "plugin", "rust", "library"]
+categories = ["web-programming"]
 
 [dependencies]
 log = { workspace = true }
+
+[lib]
+path = "src/lib.rs"

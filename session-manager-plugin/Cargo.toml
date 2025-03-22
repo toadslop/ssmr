@@ -2,6 +2,12 @@
 name = "session-manager-plugin"
 version = "0.1.0"
 edition = "2024"
+description = "A port of AWS's Session Manager plugin"
+license = "MIT"
+repository = "https://github.com/toadslop/ssmr"
+readme = "README.md"
+keywords = ["aws", "ssm", "session-manager", "plugin", "cli"]
+categories = ["command-line-interface", "web-programming"]
 
 [dependencies]
 env_logger = { workspace = true }

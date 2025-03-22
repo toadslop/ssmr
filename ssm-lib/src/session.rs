@@ -1,1 +1,2 @@
-pub fn start_session() {}
+#[inline]
+pub fn start() {}

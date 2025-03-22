@@ -57,13 +57,12 @@ impl StartSessionArgs {
     }
 
     fn process_response_arg(arg: &str) -> Result<Vec<u8>, Error> {
-        let response = match arg.starts_with(Self::AWS_SSM_START_SESSION_RESPONSE) {
-            false => arg.as_bytes().to_vec(),
-            true => {
-                let response = env::var(arg)?;
-                unsafe { env::remove_var(arg) };
-                response.into_bytes()
-            }
+        let response = if arg.starts_with(Self::AWS_SSM_START_SESSION_RESPONSE) {
+            let response = env::var(arg)?;
+            unsafe { env::remove_var(arg) };
+            response.into_bytes()
+        } else {
+            arg.as_bytes().to_vec()
         };
 
         Ok(response)
@@ -125,7 +124,7 @@ mod test {
             session_response.to_string(),
             region.to_string(),
             operation_name.to_string(),
-            "".to_string(),
+            String::default(),
             format!("{{\"Target\": \"{target}\"}}"),
             ssm_endpoint.to_string(),
         ];
@@ -136,9 +135,8 @@ mod test {
 
         assert!(matches!(result, super::Command::StartSession(_)));
 
-        let args = match result {
-            super::Command::StartSession(args) => args,
-            _ => unreachable!("Already checked that the result is StartSession"),
+        let super::Command::StartSession(args) = result else {
+            unreachable!("Already checked that the result is StartSession")
         };
 
         assert_eq!(args.response, session_response.as_bytes());
@@ -169,7 +167,7 @@ mod test {
             session_response_env_var.to_string(),
             region.to_string(),
             operation_name.to_string(),
-            "".to_string(),
+            String::default(),
             format!("{{\"Target\": \"{target}\"}}"),
             ssm_endpoint.to_string(),
         ];
@@ -181,9 +179,8 @@ mod test {
 
         assert!(matches!(result, super::Command::StartSession(_)));
 
-        let args = match result {
-            super::Command::StartSession(args) => args,
-            _ => unreachable!("Already checked that the result is StartSession"),
+        let super::Command::StartSession(args) = result else {
+            unreachable!("Already checked that the result is StartSession")
         };
 
         assert_eq!(args.response, session_response.as_bytes());
