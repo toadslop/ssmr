@@ -1,5 +1,6 @@
+#![doc = include_str!("../README.md")]
 #![warn(clippy::all, clippy::pedantic, clippy::cargo)]
-// #![warn(missing_docs)]
+#![warn(missing_docs)]
 
 use args::validate_args;
 use std::{env::args, process::exit};
@@ -22,7 +23,11 @@ fn main() {
         }
     };
 
-    command.execute();
-
-    ssm_lib::session::start();
+    match command.execute() {
+        Ok(()) => exit(0),
+        Err(err) => {
+            eprintln!("{err}");
+            exit(1)
+        }
+    }
 }
