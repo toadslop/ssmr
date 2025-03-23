@@ -7,6 +7,8 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use crate::error::Error;
+
 /// A session represents a connection to a target.
 #[allow(dead_code)] // TODO: remove
 #[derive(Debug)]
@@ -23,7 +25,15 @@ pub struct Session {
     // retry_params: RepeatableExponentialRetryer TODO: Implement this
     session_type: String,
     session_properties: HashMap<String, String>,
-    // display_mode: DisplayMode, TODO: Implement this
+    // display_mode: DisplayMode, TODO: this appears to be used only for windows; for the time being, we will ignore it
+}
+
+impl Session {
+    pub fn execute(&self) -> Result<(), Error> {
+        println!("\nStarting session with SessionId: {}\n", self.session_id);
+
+        Ok(())
+    }
 }
 
 /// A builder for creating a [Session].
