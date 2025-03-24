@@ -4,10 +4,13 @@
 //! Roughly corresponds to the code in [this folder](https://github.com/aws/session-manager-plugin/tree/mainline/src/sessionmanagerplugin/session),
 //! although input validation logic has been extracted to the main session-manager-plugin crate.
 
+use session_util::DisplayMode;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::error::Error;
+use crate::{error::Error, retry::RepeatableExponentialRetryer};
+
+mod session_util;
 
 /// A session represents a connection to a target.
 #[allow(dead_code)] // TODO: remove
@@ -22,15 +25,24 @@ pub struct Session {
     client_id: Uuid,
     target_id: String,
     // sdk: SSM TODO: Implement this
-    // retry_params: RepeatableExponentialRetryer TODO: Implement this
+    retry_params: RepeatableExponentialRetryer,
     session_type: String,
     session_properties: HashMap<String, String>,
-    // display_mode: DisplayMode, TODO: this appears to be used only for windows; for the time being, we will ignore it
+    display_mode: DisplayMode,
 }
 
 impl Session {
     pub fn execute(&self) -> Result<(), Error> {
         println!("\nStarting session with SessionId: {}\n", self.session_id);
+
+        Ok(())
+    }
+
+    pub fn open_data_channel(&self) -> Result<(), Error> {
+        println!(
+            "\nOpening data channel for session with SessionId: {}\n",
+            self.session_id
+        );
 
         Ok(())
     }
@@ -113,6 +125,8 @@ impl SessionBuilder {
             target_id: self.target_id,
             session_type: self.session_type,
             session_properties: self.session_properties,
+            display_mode: DisplayMode::new(), // Note: consider making DisplayMode generic to allow for custom implementations
+            retry_params: RepeatableExponentialRetryer::default(),
         }
     }
 }

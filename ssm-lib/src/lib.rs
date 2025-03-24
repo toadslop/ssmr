@@ -2,6 +2,8 @@
 #![warn(clippy::all, clippy::pedantic, clippy::cargo)]
 #![warn(missing_docs)]
 
+pub mod config;
 pub mod data_channel;
 pub mod error;
+mod retry;
 pub mod session;
