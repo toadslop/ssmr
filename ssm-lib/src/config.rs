@@ -5,7 +5,7 @@
 // for now, use the hardcoded configuration from the original implementation
 
 /// Defines the geometric ratio for the exponential backoff algorithm
-pub const RETRY_BASE: f64 = 2.0;
+pub const RETRY_BASE: u32 = 2;
 
 /// Used to define the initial delay for the exponential backoff algorithm.
 pub const DATA_CHANNEL_RETRY_INITIAL_DELAY_MILLIS: u64 = 100;
