@@ -21,7 +21,6 @@ pub fn validate_args(mut args: Vec<String>) -> Result<Command, Error> {
 
 #[derive(Debug, Default)]
 pub struct StartSessionParams {
-    #[allow(dead_code)] // TODO: remove
     pub is_aws_cli_upgrade_needed: bool,
     pub response: StartSessionOutput,
     pub region: String, // TODO: original implementation sets this to a global variable; need to evaluate how used and decide implementation

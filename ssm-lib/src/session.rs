@@ -13,8 +13,8 @@ use crate::{error::Error, retry::RepeatableExponentialRetryer};
 mod session_util;
 
 /// A session represents a connection to a target.
-#[allow(dead_code)] // TODO: remove
 #[derive(Debug)]
+#[allow(dead_code)] // TODO: remove this once the struct is fully implemented
 pub struct Session {
     // data_channel: DataChannel, TODO: Implement this
     session_id: String,
@@ -32,12 +32,21 @@ pub struct Session {
 }
 
 impl Session {
+    /// Execute the session.
+    ///
+    /// ## Errors
+    ///
+    /// TODO: Fill this in with actual error conditions
     pub fn execute(&self) -> Result<(), Error> {
         println!("\nStarting session with SessionId: {}\n", self.session_id);
 
         Ok(())
     }
 
+    /// Open a data channel for the session.
+    ///
+    /// ## Errors
+    /// TODO: Fill this in with actual error conditions
     pub fn open_data_channel(&self) -> Result<(), Error> {
         println!(
             "\nOpening data channel for session with SessionId: {}\n",
