@@ -1,3 +1,3 @@
 # session-manager-plugin
 
-TODO
+A Rust port of AWS's session-manager-plugin

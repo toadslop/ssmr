@@ -11,6 +11,7 @@ categories = ["web-programming"]
 
 [dependencies]
 log = { workspace = true }
+rand = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 
