@@ -8,15 +8,22 @@ use session_util::DisplayMode;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::{error::Error, retry::RepeatableExponentialRetryer};
+use crate::{
+    data_channel::{DataChannel, DefaultDataChannel},
+    error::Error,
+    retry::RepeatableExponentialRetryer,
+};
 
 mod session_util;
 
 /// A session represents a connection to a target.
 #[derive(Debug)]
 #[allow(dead_code)] // TODO: remove this once the struct is fully implemented
-pub struct Session {
-    // data_channel: DataChannel, TODO: Implement this
+pub struct Session<Channel>
+where
+    Channel: DataChannel,
+{
+    data_channel: Channel,
     session_id: String,
     stream_url: String,
     token_value: String,
@@ -31,7 +38,10 @@ pub struct Session {
     display_mode: DisplayMode,
 }
 
-impl Session {
+impl<Channel> Session<Channel>
+where
+    Channel: DataChannel,
+{
     /// Execute the session.
     ///
     /// ## Errors
@@ -60,7 +70,11 @@ impl Session {
 
 /// A builder for creating a [Session].
 #[derive(Debug, Default)]
-pub struct SessionBuilder {
+pub struct SessionBuilder<Channel = DefaultDataChannel>
+where
+    Channel: DataChannel,
+{
+    data_channel: Channel,
     stream_url: String,
     token_value: String,
     is_aws_cli_upgrade_needed: bool,
@@ -71,13 +85,18 @@ pub struct SessionBuilder {
     session_properties: HashMap<String, String>,
 }
 
-impl SessionBuilder {
-    /// Initialize the builder with default values.
+impl SessionBuilder<DefaultDataChannel> {
+    /// Create a new session builder with default values.
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new() -> SessionBuilder<DefaultDataChannel> {
+        SessionBuilder::default()
     }
+}
 
+impl<Channel> SessionBuilder<Channel>
+where
+    Channel: DataChannel,
+{
     /// Set the websockets stream url. This value should be output from the call to the `StartSession` API.
     #[must_use]
     pub fn with_stream_url(mut self, stream_url: String) -> Self {
@@ -122,9 +141,27 @@ impl SessionBuilder {
         self
     }
 
+    /// Set a custom data channel. This allows for custom implementations of the data channel.
+    pub fn with_data_channel<C>(self, data_channel: C) -> SessionBuilder<C>
+    where
+        C: DataChannel,
+    {
+        SessionBuilder {
+            data_channel,
+            stream_url: self.stream_url,
+            token_value: self.token_value,
+            is_aws_cli_upgrade_needed: self.is_aws_cli_upgrade_needed,
+            endpoint: self.endpoint,
+            session_id: self.session_id,
+            target_id: self.target_id,
+            session_type: self.session_type,
+            session_properties: self.session_properties,
+        }
+    }
+
     /// Convert the builder into a [Session].
     #[must_use]
-    pub fn build(self) -> Session {
+    pub fn build(self) -> Session<Channel> {
         Session {
             client_id: Uuid::new_v4(), // original implementation uses golang's uuid.CleanHyphen format; TODO: verify compatibility
             stream_url: self.stream_url,
@@ -137,6 +174,7 @@ impl SessionBuilder {
             session_properties: self.session_properties,
             display_mode: DisplayMode::new(), // Note: consider making DisplayMode generic to allow for custom implementations
             retry_params: RepeatableExponentialRetryer::default(),
+            data_channel: self.data_channel,
         }
     }
 }
