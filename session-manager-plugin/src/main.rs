@@ -1,5 +1,9 @@
 #![doc = include_str!("../README.md")]
-#![warn(clippy::all, clippy::pedantic, clippy::cargo)]
+#![warn(
+    clippy::all,
+    clippy::pedantic,
+    // clippy::cargo TODO: Uncomment this once duplicate versions are resolved
+)]
 #![warn(missing_docs)]
 
 use args::validate_args;
@@ -9,9 +13,12 @@ mod args;
 mod command;
 mod error;
 
+use error::Error;
+
 const LEGACY_ARGUMENT_LENGTH: usize = 4;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let args: Vec<String> = args().collect();
 
@@ -23,7 +30,7 @@ fn main() {
         }
     };
 
-    match command.execute() {
+    match command.execute().await {
         Ok(()) => exit(0),
         Err(err) => {
             eprintln!("{err}");

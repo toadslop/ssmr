@@ -14,4 +14,6 @@ pub enum Error {
     InvalidStartSessionObject,
     #[error("Expected response for start session to be a JSON object")]
     InvalidStartSessionResponseObject,
+    #[error("Session execution failed: {0}")]
+    ExecuteSessionFailure(#[from] ssm_lib::error::Error),
 }
