@@ -37,7 +37,8 @@ impl Session {
     /// ## Errors
     ///
     /// TODO: Fill this in with actual error conditions
-    pub fn execute(&self) -> Result<(), Error> {
+    #[allow(clippy::unused_async)] // TODO: Remove this once the function is fully implemented
+    pub async fn execute(&self) -> Result<(), Error> {
         println!("\nStarting session with SessionId: {}\n", self.session_id);
 
         Ok(())

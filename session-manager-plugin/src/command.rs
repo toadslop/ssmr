@@ -1,7 +1,5 @@
-use serde_json::Error;
-use ssm_lib::session::SessionBuilder;
-
 use crate::args::StartSessionParams;
+use ssm_lib::session::SessionBuilder;
 
 #[derive(Debug)]
 pub enum Command {
@@ -11,11 +9,11 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn execute(self) -> Result<(), Error> {
+    pub async fn execute(self) -> Result<(), crate::Error> {
         match self {
             Command::ReportInstallSuccess => report_install_success(),
             Command::Version => report_version(),
-            Command::StartSession(args) => start_session(args)?,
+            Command::StartSession(args) => start_session(args).await?,
         };
         Ok(())
     }
@@ -32,16 +30,18 @@ fn report_version() {
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn start_session(args: StartSessionParams) -> Result<(), Error> {
+async fn start_session(args: StartSessionParams) -> Result<(), crate::Error> {
     // Allow deprecated usage of `with_aws_cli_upgrade_needed` for compatibility with the original implementation.
     #[allow(deprecated)]
-    let _session = SessionBuilder::new()
+    let session = SessionBuilder::new()
         .with_stream_url(args.response.stream_url)
         .with_endpoint(args.ssm_endpoint)
         .with_aws_cli_upgrade_needed(args.is_aws_cli_upgrade_needed)
         .with_session_id(args.response.session_id)
         .with_target_id(args.target)
         .build();
+
+    session.execute().await?;
 
     // TODO: Implement the rest of the session creation logic
     // TODO: Implement session handling logic
