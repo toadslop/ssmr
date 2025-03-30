@@ -7,3 +7,4 @@ pub mod data_channel;
 pub mod error;
 mod retry;
 pub mod session;
+pub mod websocket_channel;
