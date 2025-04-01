@@ -136,10 +136,9 @@ impl Default for StreamingMessage {
 
 #[cfg(test)]
 mod test {
-    use crate::websocket_channel::MockWebsocketChannel;
-
     use super::DefaultDataChannel;
     use super::config;
+    use crate::websocket_channel::MockWebsocketChannel;
 
     const CLIENT_ID: &str = "client-id";
     const SESSION_ID: &str = "session-id";
@@ -175,7 +174,10 @@ mod test {
             u128::from(config::DEFAULT_TRANSMISSION_TIMEOUT_MILLIS),
             data_channel.retransmission_timeout.as_millis()
         );
-
-        // assert.NotNil(t, datachannel.wsChannel)
     }
+
+    // This test is unnecessary in the Rust implementation. Leaving it here in order to track the fact that
+    // this test is not implemented due to an oversight.
+    // #[test]
+    // fn set_websocket() {}
 }
