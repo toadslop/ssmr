@@ -6,5 +6,8 @@ pub mod config;
 pub mod data_channel;
 pub mod error;
 mod retry;
+mod service;
 pub mod session;
 pub mod websocket_channel;
+
+pub use error::Error;

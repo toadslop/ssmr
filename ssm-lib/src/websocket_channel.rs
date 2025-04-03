@@ -8,6 +8,18 @@ pub trait WebsocketChannel {
 
     /// TODO: document
     fn get_channel_token(&self) -> &str;
+
+    /// TODO: document
+    ///
+    /// ## Errors
+    /// TODO: document errors
+    fn close(&self) -> Result<(), crate::Error>;
+
+    /// TODO: document
+    ///
+    /// ## Errors
+    /// TODO: document errors
+    fn open(&self) -> Result<(), crate::Error>;
 }
 
 /// Default [`WebsocketChannel`] implementation.
@@ -24,6 +36,14 @@ impl WebsocketChannel for DefaultWebsocketChannel {
 
     fn get_channel_token(&self) -> &str {
         &self.channel_token
+    }
+
+    fn close(&self) -> Result<(), crate::Error> {
+        todo!()
+    }
+
+    fn open(&self) -> Result<(), crate::Error> {
+        todo!()
     }
 }
 
