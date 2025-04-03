@@ -1,7 +1,9 @@
 //! Implements a data channel for interactive session.
 
+use uuid::Uuid;
+
 use crate::{
-    config,
+    config, service,
     websocket_channel::{DefaultWebsocketChannel, WebsocketChannel},
 };
 use std::{
@@ -11,7 +13,35 @@ use std::{
 
 /// TODO: Add a description of the data channel.
 #[mockall::automock]
-pub trait DataChannel {}
+pub trait DataChannel {
+    /// TODO: document
+    ///
+    /// ## Errors
+    ///
+    /// TODO: doc errors
+    fn reconnect(&self) -> Result<(), crate::Error>;
+
+    /// TODO: document
+    ///
+    /// ## Errors
+    ///
+    /// TODO: document errors
+    fn close(&self) -> Result<(), crate::Error>;
+
+    /// TODO: document
+    ///
+    /// ## Errors
+    ///
+    /// TODO: doc errors
+    fn open(&self) -> Result<(), crate::Error>;
+
+    /// TODO: document
+    ///
+    /// ## Errors
+    ///
+    /// TODO: doc errors
+    fn finalize_data_channel_handshake(&self, channel_token: &str) -> Result<(), crate::Error>;
+}
 
 /// TODO: Add a description of the default data channel.
 #[derive(Debug, Default)]
@@ -82,7 +112,54 @@ impl DefaultDataChannel {
     }
 }
 
-impl DataChannel for DefaultDataChannel {}
+impl<Channel> DataChannel for DefaultDataChannel<Channel>
+where
+    Channel: WebsocketChannel,
+{
+    fn reconnect(&self) -> Result<(), crate::Error> {
+        if let Err(err) = self.close() {
+            log::error!("Closing datachannel failed with error: {err}");
+        }
+
+        self.open()?;
+
+        log::info!(
+            "Successfully reconnected to data channel: {}",
+            self.ws_channel.get_stream_url()
+        );
+
+        Ok(())
+    }
+
+    fn close(&self) -> Result<(), crate::Error> {
+        log::info!(
+            "Closing datachannel with url {}",
+            self.ws_channel.get_stream_url()
+        );
+        self.ws_channel.close()
+    }
+
+    fn open(&self) -> Result<(), crate::Error> {
+        self.ws_channel.open()?;
+
+        self.finalize_data_channel_handshake(self.ws_channel.get_channel_token())?;
+
+        Ok(())
+    }
+
+    fn finalize_data_channel_handshake(&self, channel_token: &str) -> Result<(), crate::Error> {
+        let uuid = Uuid::new_v4();
+
+        log::info!(
+            "Sending token through data channel {} to acknowledge connection",
+            self.ws_channel.get_stream_url()
+        );
+
+        service::OpenDataChannelInput {};
+
+        todo!()
+    }
+}
 
 #[derive(Debug, Default)]
 #[allow(dead_code)] // TODO: remove after implementation complete
@@ -136,6 +213,7 @@ impl Default for StreamingMessage {
 
 #[cfg(test)]
 mod test {
+    use super::DataChannel;
     use super::DefaultDataChannel;
     use super::config;
     use crate::websocket_channel::MockWebsocketChannel;
@@ -180,4 +258,27 @@ mod test {
     // this test is not implemented due to an oversight.
     // #[test]
     // fn set_websocket() {}
+
+    #[test]
+    fn reconnect() {
+        let mut ws_channel = MockWebsocketChannel::new();
+
+        ws_channel.expect_close().once().returning(|| Ok(()));
+        ws_channel.expect_open().once().returning(|| Ok(()));
+
+        let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
+
+        data_channel.reconnect().expect("Reconnect should succeed.");
+    }
+
+    fn get_data_channel(
+        ws_channel: MockWebsocketChannel,
+    ) -> DefaultDataChannel<MockWebsocketChannel> {
+        DefaultDataChannel::new(
+            CLIENT_ID.to_string(),
+            SESSION_ID.to_string(),
+            INSTANCE_ID.to_string(),
+            ws_channel,
+        )
+    }
 }
