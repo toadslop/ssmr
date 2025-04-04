@@ -13,6 +13,8 @@ categories = ["web-programming"]
 log = { workspace = true }
 mockall = { workspace = true }
 rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 

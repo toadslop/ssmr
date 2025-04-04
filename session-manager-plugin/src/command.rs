@@ -14,7 +14,7 @@ impl Command {
             Command::ReportInstallSuccess => report_install_success(),
             Command::Version => report_version(),
             Command::StartSession(args) => start_session(args).await?,
-        };
+        }
         Ok(())
     }
 }

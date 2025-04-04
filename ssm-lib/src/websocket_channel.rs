@@ -20,6 +20,12 @@ pub trait WebsocketChannel {
     /// ## Errors
     /// TODO: document errors
     fn open(&self) -> Result<(), crate::Error>;
+
+    /// TODO: document
+    ///
+    /// ## Errors
+    /// TODO: document errors
+    fn send_message(&self, input: &[u8], input_type: u32) -> Result<(), crate::Error>;
 }
 
 /// Default [`WebsocketChannel`] implementation.
@@ -43,6 +49,10 @@ impl WebsocketChannel for DefaultWebsocketChannel {
     }
 
     fn open(&self) -> Result<(), crate::Error> {
+        todo!()
+    }
+
+    fn send_message(&self, _input: &[u8], _input_type: u32) -> Result<(), crate::Error> {
         todo!()
     }
 }
