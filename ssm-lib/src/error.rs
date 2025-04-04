@@ -20,4 +20,9 @@ pub enum Error {
     /// TODO: document
     #[error("error sending token for handshake: {0}")]
     FinalizeHandshake(#[source] Box<Self>),
+
+    /// Indicates that the data channel input could not be serialized to JSON.
+    /// This is a bug in the library and should not happen.
+    #[error("Error serializing openDataChannelInput: {0}")]
+    OpenDataChannelInputSerialization(#[source] serde_json::Error),
 }

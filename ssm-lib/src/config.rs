@@ -33,3 +33,9 @@ pub const DEFAULT_ROUND_TRIP_TIME_VARIATION_MILLIS: u64 = 0;
 
 /// TODO: document
 pub const DEFAULT_TRANSMISSION_TIMEOUT_MILLIS: u64 = 200;
+
+/// TODO: document
+pub const MESSAGE_SCHEMA_VERSION: &str = "1.0";
+
+/// TODO: document
+pub const CLIENT_VERSION: &str = "1.0.0";

@@ -1,7 +1,5 @@
 //! Implements a data channel for interactive session.
 
-use uuid::Uuid;
-
 use crate::{
     config, service,
     websocket_channel::{DefaultWebsocketChannel, WebsocketChannel},
@@ -41,6 +39,13 @@ pub trait DataChannel {
     ///
     /// TODO: doc errors
     fn finalize_data_channel_handshake(&self, channel_token: &str) -> Result<(), crate::Error>;
+
+    /// TODO: document
+    ///
+    /// ## Errors
+    ///
+    /// TODO: doc errors
+    fn send_message(&self, input: &[u8], input_type: u32) -> Result<(), crate::Error>;
 }
 
 /// TODO: Add a description of the default data channel.
@@ -148,16 +153,23 @@ where
     }
 
     fn finalize_data_channel_handshake(&self, channel_token: &str) -> Result<(), crate::Error> {
-        let uuid = Uuid::new_v4();
-
         log::info!(
             "Sending token through data channel {} to acknowledge connection",
             self.ws_channel.get_stream_url()
         );
 
-        service::OpenDataChannelInput {};
+        let open_data_channel_input =
+            service::OpenDataChannelInput::new(channel_token.to_string(), self.client_id.clone());
 
-        todo!()
+        let open_data_channel_input = serde_json::to_string(&open_data_channel_input)
+            .map_err(crate::Error::OpenDataChannelInputSerialization)?;
+        dbg!(&open_data_channel_input);
+        // TODO: need to check tokio-tungstenite and handle this the way it should be handled
+        self.send_message(open_data_channel_input.as_bytes(), 0)
+    }
+
+    fn send_message(&self, input: &[u8], input_type: u32) -> Result<(), crate::Error> {
+        self.ws_channel.send_message(input, input_type)
     }
 }
 
@@ -216,11 +228,14 @@ mod test {
     use super::DataChannel;
     use super::DefaultDataChannel;
     use super::config;
+    use crate::service::OpenDataChannelInput;
     use crate::websocket_channel::MockWebsocketChannel;
 
     const CLIENT_ID: &str = "client-id";
     const SESSION_ID: &str = "session-id";
     const INSTANCE_ID: &str = "instance-id";
+    const CHANNEL_TOKEN: &str = "channel-token";
+    // const STREAM_URL: &str = "stream-url";
 
     #[test]
     fn initialize() {
@@ -265,6 +280,26 @@ mod test {
 
         ws_channel.expect_close().once().returning(|| Ok(()));
         ws_channel.expect_open().once().returning(|| Ok(()));
+
+        ws_channel
+            .expect_get_channel_token()
+            .once()
+            .return_const(CHANNEL_TOKEN.to_string());
+
+        ws_channel
+            .expect_send_message()
+            .once()
+            // We don't check the message id because its generated internally and we don't care about it
+            .withf(|input, message_type| {
+                let input: OpenDataChannelInput =
+                    serde_json::from_slice(input).expect("Failed to deserialize input");
+                input.message_schema_version == config::MESSAGE_SCHEMA_VERSION
+                    && input.client_id == CLIENT_ID
+                    && input.token_value == CHANNEL_TOKEN
+                    && input.client_version == env!("CARGO_PKG_VERSION")
+                    && *message_type == 0 // TODO: check this value
+            })
+            .returning(|_, _| Ok(()));
 
         let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
 
