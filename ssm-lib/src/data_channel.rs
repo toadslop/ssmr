@@ -329,6 +329,26 @@ mod test {
         data_channel.close().expect("Close should succeed.");
     }
 
+    #[test]
+    fn finalize_data_channel_handshake() {
+        let mut ws_channel = MockWebsocketChannel::new();
+
+        ws_channel
+            .expect_send_message()
+            .once()
+            .withf(send_message_input)
+            .returning(|_, _| Ok(()));
+
+        // The original code was expecting a call to get_channel_token here, but in Rust, the call to log::info!
+        // appears to not be invoked in tests.
+
+        let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
+
+        data_channel
+            .finalize_data_channel_handshake(CHANNEL_TOKEN)
+            .expect("Finalize data channel handshake should succeed.");
+    }
+
     // Allow trivially_copy_pass_by_ref because the input is a reference and we can't change that.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     // We don't check the message id because its generated internally and we don't care about it
