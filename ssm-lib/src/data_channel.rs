@@ -289,21 +289,46 @@ mod test {
         ws_channel
             .expect_send_message()
             .once()
-            // We don't check the message id because its generated internally and we don't care about it
-            .withf(|input, message_type| {
-                let input: OpenDataChannelInput =
-                    serde_json::from_slice(input).expect("Failed to deserialize input");
-                input.message_schema_version == config::MESSAGE_SCHEMA_VERSION
-                    && input.client_id == CLIENT_ID
-                    && input.token_value == CHANNEL_TOKEN
-                    && input.client_version == env!("CARGO_PKG_VERSION")
-                    && *message_type == 0 // TODO: check this value
-            })
+            .withf(send_message_input)
             .returning(|_, _| Ok(()));
 
         let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
 
         data_channel.reconnect().expect("Reconnect should succeed.");
+    }
+
+    #[test]
+    fn open() {
+        let mut ws_channel = MockWebsocketChannel::new();
+
+        ws_channel.expect_open().once().returning(|| Ok(()));
+        ws_channel
+            .expect_get_channel_token()
+            .once()
+            .return_const(CHANNEL_TOKEN.to_string());
+
+        ws_channel
+            .expect_send_message()
+            .once()
+            .withf(send_message_input)
+            .returning(|_, _| Ok(()));
+
+        let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
+
+        data_channel.open().expect("Open should succeed.");
+    }
+
+    // Allow trivially_copy_pass_by_ref because the input is a reference and we can't change that.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    // We don't check the message id because its generated internally and we don't care about it
+    fn send_message_input(input: &[u8], message_type: &u32) -> bool {
+        let input: OpenDataChannelInput =
+            serde_json::from_slice(input).expect("Failed to deserialize input");
+        input.message_schema_version == config::MESSAGE_SCHEMA_VERSION
+            && input.client_id == CLIENT_ID
+            && input.token_value == CHANNEL_TOKEN
+            && input.client_version == env!("CARGO_PKG_VERSION")
+            && *message_type == 0 // TODO: check this value
     }
 
     fn get_data_channel(
