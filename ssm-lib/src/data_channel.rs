@@ -318,6 +318,17 @@ mod test {
         data_channel.open().expect("Open should succeed.");
     }
 
+    #[test]
+    fn close() {
+        let mut ws_channel = MockWebsocketChannel::new();
+
+        ws_channel.expect_close().once().returning(|| Ok(()));
+
+        let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
+
+        data_channel.close().expect("Close should succeed.");
+    }
+
     // Allow trivially_copy_pass_by_ref because the input is a reference and we can't change that.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     // We don't check the message id because its generated internally and we don't care about it
