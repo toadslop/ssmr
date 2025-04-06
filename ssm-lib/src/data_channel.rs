@@ -225,6 +225,8 @@ impl Default for StreamingMessage {
 
 #[cfg(test)]
 mod test {
+    use mockall::predicate::eq;
+
     use super::DataChannel;
     use super::DefaultDataChannel;
     use super::config;
@@ -235,6 +237,7 @@ mod test {
     const SESSION_ID: &str = "session-id";
     const INSTANCE_ID: &str = "instance-id";
     const CHANNEL_TOKEN: &str = "channel-token";
+    const MESSAGE: &[u8] = b"message";
     // const STREAM_URL: &str = "stream-url";
 
     #[test]
@@ -289,7 +292,7 @@ mod test {
         ws_channel
             .expect_send_message()
             .once()
-            .withf(send_message_input)
+            .withf(open_data_channel_input)
             .returning(|_, _| Ok(()));
 
         let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
@@ -310,7 +313,7 @@ mod test {
         ws_channel
             .expect_send_message()
             .once()
-            .withf(send_message_input)
+            .withf(open_data_channel_input)
             .returning(|_, _| Ok(()));
 
         let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
@@ -336,7 +339,7 @@ mod test {
         ws_channel
             .expect_send_message()
             .once()
-            .withf(send_message_input)
+            .withf(open_data_channel_input)
             .returning(|_, _| Ok(()));
 
         // The original code was expecting a call to get_channel_token here, but in Rust, the call to log::info!
@@ -349,10 +352,27 @@ mod test {
             .expect("Finalize data channel handshake should succeed.");
     }
 
+    #[test]
+    fn test_send_message() {
+        let mut ws_channel = MockWebsocketChannel::new();
+
+        ws_channel
+            .expect_send_message()
+            .once()
+            .with(eq(MESSAGE), eq(0))
+            .returning(|_, _| Ok(()));
+
+        let data_channel: DefaultDataChannel<MockWebsocketChannel> = get_data_channel(ws_channel);
+
+        data_channel
+            .send_message(MESSAGE, 0)
+            .expect("Send message should succeed.");
+    }
+
     // Allow trivially_copy_pass_by_ref because the input is a reference and we can't change that.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     // We don't check the message id because its generated internally and we don't care about it
-    fn send_message_input(input: &[u8], message_type: &u32) -> bool {
+    fn open_data_channel_input(input: &[u8], message_type: &u32) -> bool {
         let input: OpenDataChannelInput =
             serde_json::from_slice(input).expect("Failed to deserialize input");
         input.message_schema_version == config::MESSAGE_SCHEMA_VERSION
