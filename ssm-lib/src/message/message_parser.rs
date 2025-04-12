@@ -13,6 +13,7 @@ impl ClientMessage {
 }
 
 /// putString puts a string value to a byte array starting from the specified offset.  (comment from original)
+// TODO: what is the purpose of offset end? why not just go to the end of the input?
 #[allow(dead_code)]
 fn put_string(
     byte_array: &mut [u8],
@@ -41,10 +42,12 @@ fn put_string(
     // TODO: why is this necessary? Can't we just overwrite without clearing first?
     byte_array
         .iter_mut()
+        .skip(offset_start)
         .take(offset_end)
         .for_each(|byte| *byte = b' ');
 
-    byte_array[..input_string.len()].copy_from_slice(input_string.as_bytes());
+    byte_array[offset_start..(offset_start + input_string.len())]
+        .copy_from_slice(input_string.as_bytes());
 
     Ok(())
 }
@@ -148,9 +151,46 @@ mod test {
             if result.is_ok() {
                 let output = String::from_utf8(byte_array)
                     .expect("Should be able to convert input to utf8 string");
-
-                assert!(output.contains(input));
+                dbg!(offset_start, &output, input, &output[offset_start..]);
+                assert!(&output[offset_start..].starts_with(input));
             }
         }
+    }
+
+    #[test]
+    fn put_bytes() {
+        let test_cases = [
+            TestParams {
+                // basic
+                byte_array: default_byte_buffer_generator(),
+                offset_start: 0,
+                offset_end: 3,
+                input: [0x22, 0x55, 0xff, 0x22],
+                expected: Ok(()),
+            },
+            TestParams {
+                // basic offset
+                byte_array: default_byte_buffer_generator(),
+                offset_start: 1,
+                offset_end: 4,
+                input: [0x22, 0x55, 0xff, 0x22],
+                expected: Ok(()),
+            },
+            TestParams {
+                byte_array: default_byte_buffer_generator(),
+                offset_start: 0,
+                offset_end: 2,
+                input: [0x22, 0x55, 0x00, 0x22],
+                expected: Err(super::Error::BufferTooSmall),
+            },
+            // Cannot put anything in a 0-length buffer
+            TestParams {
+                byte_array: get_n_byte_buffer(0),
+                offset_start: 0,
+                offset_end: 7,
+                input: [0x22, 0x55, 0x00, 0x22],
+                expected: Err(super::Error::OffsetOutOfBounds),
+            },
+        ];
     }
 }
