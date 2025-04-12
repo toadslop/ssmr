@@ -387,7 +387,7 @@ impl MapMessageBuffer {
 }
 
 /// TODO: document
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)] // TODO: remove after implementation complete
 pub struct StreamingMessage {
     content: Vec<u8>, // TODO: check characterics of message to determine whether a vec or array is more appropriate
@@ -422,14 +422,13 @@ impl Default for StreamingMessage {
 
 #[cfg(test)]
 mod test {
-    use mockall::predicate::eq;
-
     use super::DataChannel;
     use super::DefaultDataChannel;
     use super::config;
     use crate::message::PayloadType;
     use crate::service::OpenDataChannelInput;
     use crate::websocket_channel::MockWebsocketChannel;
+    use mockall::predicate::eq;
 
     const CLIENT_ID: &str = "client-id";
     const SESSION_ID: &str = "session-id";
@@ -604,6 +603,32 @@ mod test {
         );
     }
 
+    // TODO: finish test
+    // #[test]
+    // fn process_acknowledged_message() {
+    //     let ws_channel = MockWebsocketChannel::new();
+    //     let (_, mut streaming_messages) = get_client_and_streaming_messages_list(1);
+
+    //     let data_channel = get_data_channel(ws_channel);
+    //     data_channel.add_data_to_outgoing_message_buffer(mem::take(&mut streaming_messages[0]));
+
+    //     // TODO: implement type
+    //     // message::AckownedgedContent {}
+
+    //     // TODO: implement function
+    //     // data_channel.process_achnowledged_message()
+
+    //     assert_eq!(
+    //         0,
+    //         data_channel
+    //             .outgoing_message_buffer
+    //             .lock()
+    //             .unwrap()
+    //             .messages
+    //             .len(),
+    //     );
+    // }
+
     // Allow trivially_copy_pass_by_ref because the input is a reference and we can't change that.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     // We don't check the message id because its generated internally and we don't care about it
@@ -627,4 +652,10 @@ mod test {
             ws_channel,
         )
     }
+
+    // Could optimize tests by using lazy static to generate a shared list of messages if generating
+    // this dummy data for every test slows the test suite down too much
+    // fn get_client_and_streaming_messages_list(size: u8) -> (Vec<Vec<u8>>, Vec<StreamingMessage>) {
+    //     todo!()
+    // }
 }

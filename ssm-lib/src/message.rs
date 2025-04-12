@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 
 mod message_parser;
 
+pub use message_parser::Error;
+
 /// TODO: document
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PayloadType {

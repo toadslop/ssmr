@@ -28,5 +28,5 @@ pub enum Error {
 
     /// TODO
     #[error("Cannot serialize StreamData message with error: {0}")]
-    MessageSerialization(#[source] Box<Self>),
+    MessageSerialization(#[source] crate::message::Error),
 }
