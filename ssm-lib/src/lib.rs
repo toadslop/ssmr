@@ -5,6 +5,7 @@
 pub mod config;
 pub mod data_channel;
 pub mod error;
+pub mod message;
 mod retry;
 mod service;
 pub mod session;

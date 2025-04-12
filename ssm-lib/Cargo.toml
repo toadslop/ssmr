@@ -10,6 +10,8 @@ keywords = ["aws", "ssm", "session-manager", "plugin", "library"]
 categories = ["web-programming"]
 
 [dependencies]
+bitflags = { workspace = true }
+chrono = "0.4.40"
 log = { workspace = true }
 mockall = { workspace = true }
 rand = { workspace = true }

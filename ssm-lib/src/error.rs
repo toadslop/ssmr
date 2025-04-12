@@ -25,4 +25,8 @@ pub enum Error {
     /// This is a bug in the library and should not happen.
     #[error("Error serializing openDataChannelInput: {0}")]
     OpenDataChannelInputSerialization(#[source] serde_json::Error),
+
+    /// TODO
+    #[error("Cannot serialize StreamData message with error: {0}")]
+    MessageSerialization(#[source] Box<Self>),
 }
