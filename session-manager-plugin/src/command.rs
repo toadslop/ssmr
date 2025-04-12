@@ -29,7 +29,6 @@ fn report_version() {
     println!("{}", env!("CARGO_PKG_VERSION"));
 }
 
-#[allow(clippy::unnecessary_wraps)]
 async fn start_session(args: StartSessionParams) -> Result<(), crate::Error> {
     // Allow deprecated usage of `with_aws_cli_upgrade_needed` for compatibility with the original implementation.
     #[allow(deprecated)]
