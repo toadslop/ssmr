@@ -82,6 +82,13 @@ fn put_bytes(
     Ok(())
 }
 
+/// The original implementation had this function so we provide it here too for consistency's sake.
+/// It helps because the implementation only uses big-endian, so we can specify that here.
+#[allow(dead_code)]
+fn long_to_bytes(input: i64) -> [u8; 8] {
+    input.to_be_bytes()
+}
+
 /// TODO: document
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum Error {
@@ -283,7 +290,6 @@ mod test {
             );
     }
 
-    // TODO: refactor these testing logics to remove duplication.
     #[test]
     fn put_bytes() {
         TestSuite::new()
@@ -320,5 +326,16 @@ mod test {
                 expected: Err(super::Error::OffsetOutOfBounds),
             })
             .execute(super::put_bytes, |_, _, _, _, _| {});
+    }
+
+    #[test]
+    /// Although this test trivially tests the behavior of a standard libary function,
+    /// which may make the test seem pointless, it serves mostly to help confirm that
+    /// the library converts to bytes using big-endian.
+    fn long_to_bytes() {
+        let actual = super::long_to_bytes(5_747_283);
+        let expected = [0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0xb2, 0x53];
+
+        assert_eq!(actual, expected);
     }
 }
