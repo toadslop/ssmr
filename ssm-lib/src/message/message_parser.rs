@@ -13,29 +13,19 @@ impl ClientMessage {
 }
 
 /// putString puts a string value to a byte array starting from the specified offset.  (comment from original)
-// TODO: what is the purpose of offset end? why not just go to the end of the input?
 #[allow(dead_code)]
 fn put_string(byte_array: &mut [u8], span: Span, input_string: &str) -> Result<(), Error> {
-    let Span(offset_start, offset_end) = span;
-    let byte_array_length = byte_array.len();
-
-    // TODO: consider making these debug asserts
-    if byte_array_length == 0
-        || offset_start > byte_array_length - 1
-        || offset_end > byte_array_length - 1
-        || offset_start > offset_end
-    {
+    if let Err(err) = span.fits_target(byte_array) {
         log::error!("put_string failed: Offset is invalid.");
-        Err(Error::OffsetOutOfBounds)?;
+        Err(err)?;
     }
-
-    if offset_end - offset_start + 1 < input_string.len() {
-        log::error!("put_string failed: Not enough space to save the string");
-        Err(Error::BufferTooSmall)?;
+    if let Err(err) = span.fits_source(input_string.len()) {
+        log::error!("put_string failed: Not enough space to save the input");
+        Err(err)?;
     }
+    let Span(offset_start, offset_end) = span;
 
     // wipe out the array location first and then insert the new value. (comment from original)
-    // TODO: why is this necessary? Can't we just overwrite without clearing first?
     byte_array
         .iter_mut()
         .skip(offset_start)
@@ -50,26 +40,16 @@ fn put_string(byte_array: &mut [u8], span: Span, input_string: &str) -> Result<(
 
 #[allow(dead_code)]
 fn put_bytes(byte_array: &mut [u8], span: Span, input_bytes: &[u8]) -> Result<(), Error> {
-    let Span(offset_start, offset_end) = span;
-    let byte_array_length = byte_array.len();
-
-    // TODO: consider making these debug asserts
-    // TODO: fix code duplication of offset validation
-    if byte_array_length == 0
-        || offset_start > byte_array_length - 1
-        || offset_end > byte_array_length - 1
-        || offset_start > offset_end
-    {
+    if let Err(err) = span.fits_target(byte_array) {
         log::error!("put_bytes failed: Offset is invalid.");
-        Err(Error::OffsetOutOfBounds)?;
+        Err(err)?;
+    }
+    if let Err(err) = span.fits_source(input_bytes.len()) {
+        log::error!("put_bytes failed: Not enough space to save the input");
+        Err(err)?;
     }
 
-    if offset_end - offset_start + 1 < input_bytes.len() {
-        log::error!("put_bytes failed: Not enough space to save the string");
-        Err(Error::BufferTooSmall)?;
-    }
-
-    byte_array[offset_start..(offset_start + input_bytes.len())].copy_from_slice(input_bytes);
+    byte_array[span.0..(span.0 + input_bytes.len())].copy_from_slice(input_bytes);
 
     Ok(())
 }
@@ -81,20 +61,68 @@ fn long_to_bytes(input: i64) -> [u8; 8] {
     input.to_be_bytes()
 }
 
+#[allow(dead_code)]
 fn put_long(byte_array: &mut [u8], span: Span, value: i64) -> Result<(), Error> {
-    todo!()
+    span.fits_target(byte_array)?;
+
+    let mbytes = long_to_bytes(value);
+    byte_array[span.0..(span.0 + BYTES_IN_LONG)].copy_from_slice(&mbytes);
+
+    Ok(())
 }
 
+const BYTES_IN_LONG: usize = (u64::BITS / 8) as usize;
+
+/// Represents a contiguous span of bytes in a byte array. Used for indicating
+/// the offset at which to inject a data type into an array.
+///
+/// Note that the span is inclusive.
 #[derive(Debug, Clone, Copy)]
 struct Span(usize, usize);
 
+#[allow(dead_code)]
 impl Span {
+    /// Number of bytes in a long integer, -1. Subtracts 1 because the span is inclusive.
+    const BYTES_IN_LONG_SPAN_END: usize = BYTES_IN_LONG - 1;
     pub fn new(start: usize, end: usize) -> Self {
+        debug_assert!(start <= end);
         Self(start, end)
     }
 
-    pub fn span_8(start: usize) -> Self {
-        Self::new(start, start + 8)
+    pub fn long_span(start: usize) -> Self {
+        Self::new(start, start + Self::BYTES_IN_LONG_SPAN_END)
+    }
+
+    pub fn len(&self) -> usize {
+        self.1 - self.0 + 1
+    }
+
+    pub fn fits_source(&self, source_len: usize) -> Result<(), Error> {
+        if self.len() < source_len {
+            Err(Error::BufferTooSmall)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn fits_target(&self, byte_array: &[u8]) -> Result<(), Error> {
+        // A zero length span can fit any target
+        if self.len() == 0 {
+            Ok(())?;
+        }
+
+        let Self(offset_start, offset_end) = *self;
+        let byte_array_length = byte_array.len();
+
+        if byte_array_length == 0
+            || offset_start > byte_array_length - 1
+            || offset_end > byte_array_length - 1
+            || offset_start > offset_end
+        {
+            Err(Error::OffsetOutOfBounds)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -344,17 +372,58 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    // #[test]
-    // fn test_put_long() {
-    //     TestSuite::new()
-    //         .add_test_case(TestParams {
-    //             name: "Basic",
-    //             byte_array: get_n_byte_buffer(9),
-    //             span: super::Span(0, 0),
-    //             input: 5_747_283,
-    //             expected_buffer: &[],
-    //             expected_output: Ok(()),
-    //         })
-    //         .execute(super::put_long, |_, _, _, _| {});
-    // }
+    #[test]
+    fn test_put_long() {
+        TestSuite::new()
+            .add_test_case(TestParams {
+                name: "Basic",
+                byte_array: get_n_byte_buffer(9),
+                span: super::Span::long_span(0),
+                input: 5_747_283,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0xb2, 0x53, 0x00],
+                expected_output: Ok(()),
+            })
+            .add_test_case(TestParams {
+                name: "Basic offset",
+                byte_array: get_n_byte_buffer(10),
+                span: super::Span::long_span(1),
+                input: 92_837_273,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x88, 0x95, 0x99, 0x00],
+                expected_output: Ok(()),
+            })
+            .add_test_case(TestParams {
+                name: "Exact offset",
+                byte_array: default_byte_buffer_generator(),
+                span: super::Span::long_span(0),
+                input: 50,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32],
+                expected_output: Ok(()),
+            })
+            .add_test_case(TestParams {
+                name: "Exact offset +1",
+                byte_array: default_byte_buffer_generator(),
+                span: super::Span::long_span(1),
+                input: 50,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            // negative offset case impossible due to typing
+            .add_test_case(TestParams {
+                name: "Offset out of bounds",
+                byte_array: get_n_byte_buffer(4),
+                span: super::Span::long_span(10),
+                input: 938_283,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .add_test_case(TestParams {
+                name: "Zero size buffer",
+                byte_array: get_n_byte_buffer(0),
+                span: super::Span::long_span(0),
+                input: 938_283,
+                expected_buffer: &[],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .execute(super::put_long, |_, _, _, _| {});
+    }
 }
