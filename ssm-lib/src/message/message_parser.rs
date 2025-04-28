@@ -71,7 +71,23 @@ fn put_long(byte_array: &mut [u8], span: Span, value: i64) -> Result<(), Error> 
     Ok(())
 }
 
+#[allow(dead_code)]
+fn put_integer(byte_array: &mut [u8], span: Span, value: i32) -> Result<(), Error> {
+    span.fits_target(byte_array)?;
+
+    let bytes = integer_to_bytes(value);
+    byte_array[span.0..(span.0 + BYTES_IN_INT)].copy_from_slice(&bytes);
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn integer_to_bytes(input: i32) -> [u8; 4] {
+    input.to_be_bytes()
+}
+
 const BYTES_IN_LONG: usize = (u64::BITS / 8) as usize;
+const BYTES_IN_INT: usize = (i32::BITS / 8) as usize;
 
 /// Represents a contiguous span of bytes in a byte array. Used for indicating
 /// the offset at which to inject a data type into an array.
@@ -84,6 +100,8 @@ struct Span(usize, usize);
 impl Span {
     /// Number of bytes in a long integer, -1. Subtracts 1 because the span is inclusive.
     const BYTES_IN_LONG_SPAN_END: usize = BYTES_IN_LONG - 1;
+    const BYTES_IN_INT_SPAN_END: usize = BYTES_IN_INT - 1;
+
     pub fn new(start: usize, end: usize) -> Self {
         debug_assert!(start <= end);
         Self(start, end)
@@ -91,6 +109,10 @@ impl Span {
 
     pub fn long_span(start: usize) -> Self {
         Self::new(start, start + Self::BYTES_IN_LONG_SPAN_END)
+    }
+
+    pub fn int_span(start: usize) -> Self {
+        Self::new(start, start + Self::BYTES_IN_INT_SPAN_END)
     }
 
     pub fn len(&self) -> usize {
@@ -193,6 +215,12 @@ mod test {
     impl HasLen for i64 {
         fn len(&self) -> usize {
             8
+        }
+    }
+
+    impl HasLen for i32 {
+        fn len(&self) -> usize {
+            4
         }
     }
 
@@ -425,5 +453,51 @@ mod test {
                 expected_output: Err(super::Error::OffsetOutOfBounds),
             })
             .execute(super::put_long, |_, _, _, _| {});
+    }
+
+    #[test]
+    fn test_put_integer() {
+        TestSuite::new()
+            .add_test_case(TestParams {
+                name: "Basic",
+                byte_array: get_n_byte_buffer(5),
+                span: super::Span::int_span(0),
+                input: 324,
+                expected_buffer: &[0x00, 0x00, 0x01, 0x44, 0x00],
+                expected_output: Ok(()),
+            })
+            .add_test_case(TestParams {
+                name: "Basic offset",
+                byte_array: default_byte_buffer_generator(),
+                span: super::Span::int_span(1),
+                input: 520_392,
+                expected_buffer: &[0x00, 0x00, 0x07, 0xf0, 0xc8, 0x00, 0x00, 0x00],
+                expected_output: Ok(()),
+            })
+            .add_test_case(TestParams {
+                name: "Exact offset",
+                byte_array: get_n_byte_buffer(4),
+                span: super::Span::int_span(0),
+                input: 50,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x32],
+                expected_output: Ok(()),
+            })
+            .add_test_case(TestParams {
+                name: "Exact offset +1",
+                byte_array: default_byte_buffer_generator(),
+                span: super::Span::int_span(5),
+                input: 50,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .add_test_case(TestParams {
+                name: "Offset out of bounds",
+                byte_array: get_n_byte_buffer(4),
+                span: super::Span::int_span(10),
+                input: 938_283,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .execute(super::put_integer, |_, _, _, _| {});
     }
 }
