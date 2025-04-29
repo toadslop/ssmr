@@ -66,7 +66,7 @@ fn put_long(byte_array: &mut [u8], span: Span, value: i64) -> Result<(), Error> 
     span.fits_target(byte_array)?;
 
     let mbytes = long_to_bytes(value);
-    dbg!(span, BYTES_IN_LONG);
+
     byte_array[span.0..(span.0 + BYTES_IN_LONG)].copy_from_slice(&mbytes);
 
     Ok(())
@@ -93,8 +93,7 @@ fn get_string(byte_array: &[u8], span: Span) -> Result<String, Error> {
         log::error!("get_string failed: Offset is invalid.");
         Err(err)?;
     }
-    dbg!(&span);
-    dbg!(byte_array);
+
     let Span(offset_start, offset_end) = span;
     let string_bytes = &byte_array[offset_start..offset_end];
     // let string_bytes = trim_bytes(&byte_array[offset_start..(offset_start + offset_end)], 0xff);
