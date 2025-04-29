@@ -66,6 +66,7 @@ fn put_long(byte_array: &mut [u8], span: Span, value: i64) -> Result<(), Error> 
     span.fits_target(byte_array)?;
 
     let mbytes = long_to_bytes(value);
+
     byte_array[span.0..(span.0 + BYTES_IN_LONG)].copy_from_slice(&mbytes);
 
     Ok(())
@@ -86,37 +87,63 @@ fn integer_to_bytes(input: i32) -> [u8; 4] {
     input.to_be_bytes()
 }
 
+#[allow(dead_code)]
+fn get_string(byte_array: &[u8], span: Span) -> Result<String, Error> {
+    if let Err(err) = span.fits_target(byte_array) {
+        log::error!("get_string failed: Offset is invalid.");
+        Err(err)?;
+    }
+
+    let Span(offset_start, offset_end) = span;
+    let string_bytes = &byte_array[offset_start..offset_end];
+    // let string_bytes = trim_bytes(&byte_array[offset_start..(offset_start + offset_end)], 0xff);
+
+    // TODO: attempt to remove allocation
+    // TODO: should this be lossy?
+    let string = String::from_utf8_lossy(string_bytes).to_string();
+
+    Ok(string)
+}
+
+// pub fn trim_bytes(data: &[u8], byte: u8) -> &[u8] {
+//     let start = data.iter().position(|&b| b != byte).unwrap_or(data.len());
+//     let end = data.iter().rposition(|&b| b != byte).map_or(0, |i| i + 1);
+//     &data[start..end]
+// }
+
 const BYTES_IN_LONG: usize = (u64::BITS / 8) as usize;
 const BYTES_IN_INT: usize = (i32::BITS / 8) as usize;
 
 /// Represents a contiguous span of bytes in a byte array. Used for indicating
 /// the offset at which to inject a data type into an array.
 ///
-/// Note that the span is inclusive.
+/// Note that the span is not inclusive, which differs from the original implementation
+/// where it was. The original implementation needed to be changed in order to
+/// allow a 0 length span.
 #[derive(Debug, Clone, Copy)]
 struct Span(usize, usize);
 
 #[allow(dead_code)]
 impl Span {
-    /// Number of bytes in a long integer, -1. Subtracts 1 because the span is inclusive.
-    const BYTES_IN_LONG_SPAN_END: usize = BYTES_IN_LONG - 1;
-    const BYTES_IN_INT_SPAN_END: usize = BYTES_IN_INT - 1;
-
     pub fn new(start: usize, end: usize) -> Self {
         debug_assert!(start <= end);
         Self(start, end)
     }
 
     pub fn long_span(start: usize) -> Self {
-        Self::new(start, start + Self::BYTES_IN_LONG_SPAN_END)
+        Self::with_length(start, BYTES_IN_LONG)
     }
 
     pub fn int_span(start: usize) -> Self {
-        Self::new(start, start + Self::BYTES_IN_INT_SPAN_END)
+        Self::with_length(start, BYTES_IN_INT)
+    }
+
+    pub fn with_length(start: usize, length: usize) -> Self {
+        Self::new(start, start + length)
     }
 
     pub fn len(&self) -> usize {
-        self.1 - self.0 + 1
+        self.1 - self.0
     }
 
     pub fn fits_source(&self, source_len: usize) -> Result<(), Error> {
@@ -133,13 +160,12 @@ impl Span {
             Ok(())?;
         }
 
-        let Self(offset_start, offset_end) = *self;
+        let Span(offset_start, offset_end) = *self;
         let byte_array_length = byte_array.len();
 
         if byte_array_length == 0
-            || offset_start > byte_array_length - 1
-            || offset_end > byte_array_length - 1
-            || offset_start > offset_end
+            || offset_start > byte_array_length
+            || offset_end > byte_array_length
         {
             Err(Error::OffsetOutOfBounds)?;
         }
@@ -164,14 +190,16 @@ pub enum Error {
 mod test {
     use std::fmt::Debug;
 
+    use crate::message::message_parser::Span;
+
     #[derive(Debug)]
-    struct TestParams<I> {
+    struct TestParams<I, S> {
         name: &'static str,
         byte_array: Vec<u8>,
         span: super::Span,
         input: I,
         expected_buffer: &'static [u8],
-        expected_output: Result<(), super::Error>,
+        expected_output: Result<S, super::Error>,
     }
 
     fn get_n_byte_buffer(size: usize) -> Vec<u8> {
@@ -224,34 +252,51 @@ mod test {
         }
     }
 
-    #[derive(Debug, Default)]
-    struct TestSuite<Input>
+    impl<T> HasLen for Option<T>
     where
-        Input: Default,
+        T: HasLen,
     {
-        test_cases: Vec<TestParams<Input>>,
+        fn len(&self) -> usize {
+            self.as_ref().map_or(0, T::len)
+        }
     }
 
-    impl<Input> TestSuite<Input>
+    impl HasLen for String {
+        fn len(&self) -> usize {
+            self.len()
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct TestSuite<Input, Success>
+    where
+        Input: Default,
+        Success: Default,
+    {
+        test_cases: Vec<TestParams<Input, Success>>,
+    }
+
+    impl<Input, Success> TestSuite<Input, Success>
     where
         Input: Clone + Debug + Default + HasLen,
+        Success: Default + Debug + PartialEq,
     {
         pub fn new() -> Self {
             Self::default()
         }
 
-        pub fn add_test_case(mut self, test_case: TestParams<Input>) -> Self {
+        pub fn add_test_case(mut self, test_case: TestParams<Input, Success>) -> Self {
             self.test_cases.push(test_case);
             self
         }
 
         pub fn execute(
             self,
-            mut test_func: impl FnMut(&mut [u8], super::Span, Input) -> Result<(), super::Error>,
+            test_func: &mut TestFunc<Input, Success>,
             additional_assertions: impl Fn(&[u8], super::Span, Input, &str),
         ) {
             for case in self.test_cases {
-                let TestParams::<Input> {
+                let TestParams::<Input, Success> {
                     name,
                     mut byte_array,
                     span,
@@ -261,7 +306,10 @@ mod test {
                 } = case;
                 let super::Span(offset_start, offset_end) = span;
                 let original_byte_array = byte_array.clone();
-                let result = test_func(&mut byte_array, span, input.clone());
+                let result = match test_func {
+                    TestFunc::Getter(test_func) => test_func(&byte_array, span),
+                    TestFunc::Setter(test_func) => test_func(&mut byte_array, span, input.clone()),
+                };
 
                 assert_eq!(
                     result, expected_output,
@@ -274,7 +322,7 @@ mod test {
 
                 if result.is_ok() {
                     let byte_array_start = original_byte_array[0..offset_start].to_vec();
-                    let byte_array_end = original_byte_array[(offset_end + 1)..].to_vec();
+                    let byte_array_end = original_byte_array[(offset_end)..].to_vec();
 
                     assert_eq!(
                         &byte_array[offset_start..(offset_start + input.len())],
@@ -290,7 +338,7 @@ mod test {
 
                     assert_eq!(
                         byte_array_end,
-                        original_byte_array[(offset_end + 1)..],
+                        original_byte_array[(offset_end)..],
                         "{name}: bytes after offset should not be changed"
                     );
 
@@ -298,6 +346,16 @@ mod test {
                 }
             }
         }
+    }
+
+    type GetterFunc<Success> =
+        dyn for<'a> Fn(&'a [u8], super::Span) -> Result<Success, super::Error>;
+    type SetterFunc<Input, Success> =
+        dyn for<'a> FnMut(&'a mut [u8], super::Span, Input) -> Result<Success, super::Error>;
+
+    enum TestFunc<'a, Input, Success> {
+        Getter(&'a mut GetterFunc<Success>),
+        Setter(&'a mut SetterFunc<Input, Success>),
     }
 
     #[test]
@@ -335,29 +393,32 @@ mod test {
                 expected_buffer: &[],
                 expected_output: Err(super::Error::OffsetOutOfBounds),
             })
-            .execute(super::put_string, |byte_array, span, input, name| {
-                let super::Span(offset_start, offset_end) = span;
-                let trailing = byte_array[(offset_start + input.len())
-                    ..(offset_start + input.len() + offset_end - input.len())]
-                    .to_vec();
+            .execute(
+                &mut TestFunc::Setter(&mut super::put_string),
+                |byte_array, span, input, name| {
+                    let super::Span(offset_start, offset_end) = span;
+                    let trailing = byte_array[(offset_start + input.len())
+                        ..(offset_start + input.len() + offset_end - input.len())]
+                        .to_vec();
 
-                let trailing_should_be = " ".repeat(offset_end - input.len());
+                    let trailing_should_be = " ".repeat(offset_end - input.len());
 
-                assert_eq!(
-                    trailing,
-                    trailing_should_be.as_bytes(),
-                    "{name}: any leftofter offset should be \\s character"
-                );
-            });
+                    assert_eq!(
+                        trailing,
+                        trailing_should_be.as_bytes(),
+                        "{name}: any leftofter offset should be \\s character"
+                    );
+                },
+            );
     }
 
     #[test]
-    fn put_bytes() {
+    fn test_put_bytes() {
         TestSuite::new()
             .add_test_case(TestParams {
                 name: "basic",
                 byte_array: default_byte_buffer_generator(),
-                span: super::Span::new(0, 3),
+                span: super::Span::new(0, 4),
                 input: [0x22, 0x55, 0xff, 0x22].as_ref(),
                 expected_buffer: &[0x22, 0x55, 0xff, 0x22, 0x00, 0x00, 0x00, 0x00],
                 expected_output: Ok(()),
@@ -365,7 +426,7 @@ mod test {
             .add_test_case(TestParams {
                 name: "basic offset",
                 byte_array: default_byte_buffer_generator(),
-                span: super::Span::new(1, 4),
+                span: super::Span::new(1, 5),
                 input: [0x22, 0x55, 0xff, 0x22].as_ref(),
                 expected_buffer: &[0x00, 0x22, 0x55, 0xff, 0x22, 0x00, 0x00, 0x00],
                 expected_output: Ok(()),
@@ -373,7 +434,7 @@ mod test {
             .add_test_case(TestParams {
                 name: "Data too long for buffer",
                 byte_array: default_byte_buffer_generator(),
-                span: super::Span::new(0, 2),
+                span: super::Span::new(0, 3),
                 input: [0x22, 0x55, 0x00, 0x22].as_ref(),
                 expected_buffer: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
                 expected_output: Err(super::Error::BufferTooSmall),
@@ -381,12 +442,15 @@ mod test {
             .add_test_case(TestParams {
                 name: "Zero size buffer",
                 byte_array: get_n_byte_buffer(0),
-                span: super::Span::new(0, 7),
+                span: super::Span::new(0, 8),
                 input: [0x22, 0x55, 0x00, 0x22].as_ref(),
                 expected_buffer: &[],
                 expected_output: Err(super::Error::OffsetOutOfBounds),
             })
-            .execute(super::put_bytes, |_, _, _, _| {});
+            .execute(
+                &mut TestFunc::Setter(&mut super::put_bytes),
+                |_, _, _, _| {},
+            );
     }
 
     #[test]
@@ -452,7 +516,7 @@ mod test {
                 expected_buffer: &[],
                 expected_output: Err(super::Error::OffsetOutOfBounds),
             })
-            .execute(super::put_long, |_, _, _, _| {});
+            .execute(&mut TestFunc::Setter(&mut super::put_long), |_, _, _, _| {});
     }
 
     #[test]
@@ -498,6 +562,65 @@ mod test {
                 expected_buffer: &[0x00, 0x00, 0x00, 0x00],
                 expected_output: Err(super::Error::OffsetOutOfBounds),
             })
-            .execute(super::put_integer, |_, _, _, _| {});
+            .execute(
+                &mut TestFunc::Setter(&mut super::put_integer),
+                |_, _, _, _| {},
+            );
+    }
+
+    #[test]
+    fn test_get_string() {
+        TestSuite::new()
+            .add_test_case(TestParams {
+                name: "Basic",
+                byte_array: vec![0x72, 0x77, 0x00],
+                span: super::Span::with_length(0, 2),
+                input: None::<String>,
+                expected_buffer: &[0x72, 0x77, 0x00],
+                expected_output: Ok("rw".to_string()),
+            })
+            .add_test_case(TestParams {
+                name: "Basic offset",
+                byte_array: vec![0x00, 0x00, 0x72, 0x77, 0x00],
+                span: super::Span::with_length(2, 2),
+                input: None::<String>,
+                expected_buffer: &[0x00, 0x00, 0x72, 0x77, 0x00],
+                expected_output: Ok("rw".to_string()),
+            })
+            .add_test_case(TestParams {
+                name: "Offset out of bounds",
+                byte_array: get_n_byte_buffer(4),
+                span: super::Span::with_length(10, 2),
+                input: None::<String>,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .execute(
+                &mut TestFunc::Getter(&mut super::get_string),
+                |_, _, _, _| {},
+            );
+    }
+
+    #[test]
+    fn span_with_length() {
+        let span = super::Span::with_length(0, 6);
+        assert_eq!(span.len(), 6);
+    }
+
+    #[test]
+    fn span_length() {
+        let test_cases = [
+            (Span(0, 0), 0),
+            (Span::long_span(0), 8),
+            (Span::with_length(0, 3), 3),
+        ];
+
+        for (span, expected) in test_cases {
+            assert_eq!(
+                span.len(),
+                expected,
+                "Expected length mismatch for span: {span:?}"
+            );
+        }
     }
 }
