@@ -1,3 +1,5 @@
+use core::str;
+
 use super::ClientMessage;
 
 impl ClientMessage {
@@ -87,29 +89,35 @@ fn integer_to_bytes(input: i32) -> [u8; 4] {
     input.to_be_bytes()
 }
 
+/// The original implementation
 #[allow(dead_code)]
 fn get_string(byte_array: &[u8], span: Span) -> Result<String, Error> {
+    Ok(get_str(byte_array, span)?.to_string())
+}
+
+const NULL_BYTE: u8 = 0x00;
+
+/// A version of the original that does not allocate.
+#[allow(dead_code)]
+fn get_str(byte_array: &[u8], span: Span) -> Result<&str, Error> {
     if let Err(err) = span.fits_target(byte_array) {
         log::error!("get_string failed: Offset is invalid.");
         Err(err)?;
     }
 
     let Span(offset_start, offset_end) = span;
-    let string_bytes = &byte_array[offset_start..offset_end];
-    // let string_bytes = trim_bytes(&byte_array[offset_start..(offset_start + offset_end)], 0xff);
+    let string_bytes = trim_bytes(&byte_array[offset_start..offset_end], NULL_BYTE);
 
-    // TODO: attempt to remove allocation
-    // TODO: should this be lossy?
-    let string = String::from_utf8_lossy(string_bytes).to_string();
+    let string = str::from_utf8(string_bytes)?;
 
     Ok(string)
 }
 
-// pub fn trim_bytes(data: &[u8], byte: u8) -> &[u8] {
-//     let start = data.iter().position(|&b| b != byte).unwrap_or(data.len());
-//     let end = data.iter().rposition(|&b| b != byte).map_or(0, |i| i + 1);
-//     &data[start..end]
-// }
+pub fn trim_bytes(data: &[u8], byte: u8) -> &[u8] {
+    let start = data.iter().position(|&b| b != byte).unwrap_or(data.len());
+    let end = data.iter().rposition(|&b| b != byte).map_or(0, |i| i + 1);
+    &data[start..end]
+}
 
 const BYTES_IN_LONG: usize = (u64::BITS / 8) as usize;
 const BYTES_IN_INT: usize = (i32::BITS / 8) as usize;
@@ -147,7 +155,6 @@ impl Span {
     }
 
     pub fn fits_source(&self, source_len: usize) -> Result<(), Error> {
-        dbg!(self, source_len);
         if self.len() < source_len {
             Err(Error::BufferTooSmall)
         } else {
@@ -158,7 +165,7 @@ impl Span {
     pub fn fits_target(&self, byte_array: &[u8]) -> Result<(), Error> {
         // A zero length span can fit any target
         if self.len() == 0 {
-            Ok(())?;
+            return Ok(());
         }
 
         let Span(offset_start, offset_end) = *self;
@@ -185,6 +192,10 @@ pub enum Error {
     /// TODO: document
     #[error("Not enough space to save the string.")]
     BufferTooSmall,
+
+    /// TODO: document
+    #[error("Attempted to extract a string from a byte array that is not valid UTF-8: {0}")]
+    Utf8Error(#[from] std::str::Utf8Error),
 }
 
 #[cfg(test)]
@@ -595,6 +606,14 @@ mod test {
                 input: None::<String>,
                 expected_buffer: &[0x00, 0x00, 0x00, 0x00],
                 expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .add_test_case(TestParams {
+                name: "Trims null bytes",
+                byte_array: vec![0x00, 0x72, 0x77, 0x00],
+                span: super::Span::with_length(0, 4),
+                input: None::<String>,
+                expected_buffer: &[0x00, 0x72, 0x77, 0x00],
+                expected_output: Ok("rw".to_string()),
             })
             .execute(
                 &mut TestFunc::Getter(&mut super::get_string),
