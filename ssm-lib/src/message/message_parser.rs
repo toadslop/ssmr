@@ -147,6 +147,7 @@ impl Span {
     }
 
     pub fn fits_source(&self, source_len: usize) -> Result<(), Error> {
+        dbg!(self, source_len);
         if self.len() < source_len {
             Err(Error::BufferTooSmall)
         } else {
