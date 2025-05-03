@@ -113,6 +113,22 @@ fn get_str(byte_array: &[u8], span: Span) -> Result<&str, Error> {
     Ok(string)
 }
 
+// TODO: the get/put functions all share logic. Would be better to a single function and use generics with
+// a trait bound.
+
+#[allow(dead_code)]
+fn get_bytes(byte_array: &[u8], span: Span) -> Result<&[u8], Error> {
+    if let Err(err) = span.fits_target(byte_array) {
+        log::error!("get_bytes failed: Offset is invalid.");
+        Err(err)?;
+    }
+
+    let Span(offset_start, offset_end) = span;
+    let bytes = &byte_array[offset_start..offset_end];
+
+    Ok(bytes)
+}
+
 pub fn trim_bytes(data: &[u8], byte: u8) -> &[u8] {
     let start = data.iter().position(|&b| b != byte).unwrap_or(data.len());
     let end = data.iter().rposition(|&b| b != byte).map_or(0, |i| i + 1);
@@ -619,6 +635,40 @@ mod test {
                 &mut TestFunc::Getter(&mut super::get_string),
                 |_, _, _, _| {},
             );
+    }
+
+    #[test]
+    fn test_get_bytes() {
+        let mut wrapper = |byte_array: &[u8], span: super::Span| {
+            let result = super::get_bytes(byte_array, span);
+            result.map(<[u8]>::to_vec)
+        };
+        TestSuite::new()
+            .add_test_case(TestParams {
+                name: "Basic",
+                byte_array: vec![0x72, 0x77, 0x00],
+                span: super::Span::with_length(0, 2),
+                input: None::<String>,
+                expected_buffer: &[0x72, 0x77, 0x00],
+                expected_output: Ok(vec![0x72, 0x77]),
+            })
+            .add_test_case(TestParams {
+                name: "Basic offset",
+                byte_array: vec![0x00, 0x00, 0x72, 0x77, 0x00],
+                span: super::Span::with_length(2, 2),
+                input: None::<String>,
+                expected_buffer: &[0x00, 0x00, 0x72, 0x77, 0x00],
+                expected_output: Ok(vec![0x72, 0x77]),
+            })
+            .add_test_case(TestParams {
+                name: "Offset out of bounds",
+                byte_array: get_n_byte_buffer(4),
+                span: super::Span::with_length(10, 2),
+                input: None::<String>,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .execute(&mut TestFunc::Getter(&mut wrapper), |_, _, _, _| {});
     }
 
     #[test]
