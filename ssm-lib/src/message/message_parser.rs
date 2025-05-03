@@ -1,6 +1,5 @@
-use core::str;
-
 use super::ClientMessage;
+use std::str;
 
 impl ClientMessage {
     /// TODO: details about the serialization logic
@@ -129,6 +128,29 @@ fn get_bytes(byte_array: &[u8], span: Span) -> Result<&[u8], Error> {
     Ok(bytes)
 }
 
+#[allow(dead_code)]
+/// Converts a byte array to a long integer. The byte array must be exactly 8 bytes long.
+///
+/// The original implementation placed length-checking logic in the `[bytes_to_long]` function,
+/// but Rust can assert the length statically, so we do the length check here.
+///
+/// TODO: consider whether it is more appropriate to check the length in the caller.
+fn get_long(byte_array: &[u8], span: Span) -> Result<i64, Error> {
+    if let Err(err) = span.fits_target(byte_array) {
+        log::error!("get_long failed: Offset is invalid.");
+        Err(err)?;
+    }
+
+    let mut bytes = [0; BYTES_IN_LONG];
+    bytes.copy_from_slice(&byte_array[span.0..span.1]);
+
+    Ok(bytes_to_long(bytes))
+}
+
+pub fn bytes_to_long(input: [u8; BYTES_IN_LONG]) -> i64 {
+    i64::from_be_bytes(input)
+}
+
 pub fn trim_bytes(data: &[u8], byte: u8) -> &[u8] {
     let start = data.iter().position(|&b| b != byte).unwrap_or(data.len());
     let end = data.iter().rposition(|&b| b != byte).map_or(0, |i| i + 1);
@@ -208,6 +230,10 @@ pub enum Error {
     /// TODO: document
     #[error("Not enough space to save the string.")]
     BufferTooSmall,
+
+    /// TODO: document
+    #[error("Input array size '{0}' is not equal to {BYTES_IN_LONG}.")]
+    InvalidLongBufferSize(usize),
 
     /// TODO: document
     #[error("Attempted to extract a string from a byte array that is not valid UTF-8: {0}")]
@@ -669,6 +695,48 @@ mod test {
                 expected_output: Err(super::Error::OffsetOutOfBounds),
             })
             .execute(&mut TestFunc::Getter(&mut wrapper), |_, _, _, _| {});
+    }
+
+    #[test]
+    fn test_get_long() {
+        TestSuite::new()
+            .add_test_case(TestParams {
+                name: "Basic",
+                byte_array: vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x5a, 0x05, 0x66, 0x00],
+                span: super::Span::long_span(0),
+                input: None::<String>,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x5a, 0x05, 0x66, 0x00],
+                expected_output: Ok(5_899_622),
+            })
+            .add_test_case(TestParams {
+                name: "Basic offset",
+                byte_array: vec![
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5a, 0x05, 0x6a, 0x00,
+                ],
+                span: super::Span::long_span(2),
+                input: None::<String>,
+                expected_buffer: &[
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5a, 0x05, 0x6a, 0x00,
+                ],
+                expected_output: Ok(5_899_626),
+            })
+            .add_test_case(TestParams {
+                name: "Exact offset +1",
+                byte_array: vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                span: super::Span::long_span(2),
+                input: None::<String>,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .add_test_case(TestParams {
+                name: "Offset out of bounds",
+                byte_array: get_n_byte_buffer(4),
+                span: super::Span::long_span(10),
+                input: None::<String>,
+                expected_buffer: &[0x00, 0x00, 0x00, 0x00],
+                expected_output: Err(super::Error::OffsetOutOfBounds),
+            })
+            .execute(&mut TestFunc::Getter(&mut super::get_long), |_, _, _, _| {});
     }
 
     #[test]
