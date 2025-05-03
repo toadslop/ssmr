@@ -623,8 +623,17 @@ mod test {
 
     #[test]
     fn span_with_length() {
-        let span = super::Span::with_length(0, 6);
-        assert_eq!(span.len(), 6);
+        let test_cases = [
+            (super::Span::with_length(0, 0), 0),
+            (super::Span::with_length(0, 6), 6),
+        ];
+        for (span, expected) in test_cases {
+            assert_eq!(
+                span.len(),
+                expected,
+                "Expected length mismatch for span: {span:?}"
+            );
+        }
     }
 
     #[test]
