@@ -45,6 +45,9 @@ fn put_bytes(byte_array: &mut [u8], span: Span, input_bytes: &[u8]) -> Result<()
         log::error!("put_bytes failed: Offset is invalid.");
         Err(err)?;
     }
+
+    // it looks like there is a problem here -- might be possible to provide a span that causes a panic
+    // TODO: verify and fix if necessary
     if let Err(err) = span.fits_source(input_bytes.len()) {
         log::error!("put_bytes failed: Not enough space to save the input");
         Err(err)?;
@@ -237,14 +240,13 @@ pub enum Error {
 
     /// TODO: document
     #[error("Attempted to extract a string from a byte array that is not valid UTF-8: {0}")]
-    Utf8Error(#[from] std::str::Utf8Error),
+    ByteToUtf8Conversion(#[from] std::str::Utf8Error),
 }
 
 #[cfg(test)]
 mod test {
-    use std::fmt::Debug;
-
     use crate::message::message_parser::Span;
+    use std::fmt::Debug;
 
     #[derive(Debug)]
     struct TestParams<I, S> {
@@ -770,4 +772,42 @@ mod test {
             );
         }
     }
+
+    // #[test]
+    // fn span_fits_target() {
+    //     let test_cases = [
+    //         (Span(0, 0), Ok(())),
+    //         (Span(0, 8), Ok(())),
+    //         (Span(0, 9), Err(super::Error::OffsetOutOfBounds)),
+    //         (Span(1, 8), Err(super::Error::OffsetOutOfBounds)),
+    //         (Span(1, 9), Err(super::Error::OffsetOutOfBounds)),
+    //     ];
+
+    //     for (span, expected) in test_cases {
+    //         let result = span.fits_target(&[0; 8]);
+    //         assert_eq!(
+    //             result, expected,
+    //             "Expected result mismatch for span: {span:?}"
+    //         );
+    //     }
+    // }
+
+    // #[test]
+    // fn span_fits_source() {
+    //     let test_cases = [
+    //         (Span(0, 0), Ok(())),
+    //         (Span(0, 8), Ok(())),
+    //         (Span(0, 9), Err(super::Error::BufferTooSmall)),
+    //         (Span(1, 8), Err(super::Error::BufferTooSmall)),
+    //         (Span(1, 9), Err(super::Error::BufferTooSmall)),
+    //     ];
+
+    //     for (span, expected) in test_cases {
+    //         let result = span.fits_source(8);
+    //         assert_eq!(
+    //             result, expected,
+    //             "Expected result mismatch for span: {span:?}"
+    //         );
+    //     }
+    // }
 }
