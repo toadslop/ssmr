@@ -8,12 +8,13 @@ use serde::{Deserialize, Serialize};
 
 mod message_parser;
 
-pub use message_parser::Error;
+use sha2::{Digest, Sha256};
 
 /// TODO: document
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PayloadType {
     /// TODO: document
+    #[default]
     Output = 1,
     /// TODO: document
     Error = 2,
@@ -39,11 +40,12 @@ pub enum PayloadType {
     ExitCode = 12,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
 /// TODO: document
 pub enum MessageType {
     /// `InputStreamMessage` represents message type for input data
     #[serde(rename = "input_stream_data")]
+    #[default]
     InputStreamMessage,
 
     /// `OutputStreamMessage` represents message type for output data
@@ -80,7 +82,10 @@ pub enum MessageType {
 ///
 /// The original implementation had a `HeaderLength` field, but I couldn't find any use for it in the code so far so for now I removed it.
 #[allow(dead_code)]
+#[derive(Default)]
 pub struct ClientMessage {
+    /// `HeaderLength` is a 4 byte integer that represents the header length.
+    header_length: u32,
     /// `MessageType` is a 32 byte UTF-8 string containing the message type.
     message_type: MessageType,
     /// `SchemaVersion` is a 4 byte integer containing the message schema version number.
@@ -93,32 +98,107 @@ pub struct ClientMessage {
     flags: Flags,
     /// `MessageId` is a 40 byte UTF-8 string containing a random UUID identifying this message
     message_id: uuid::Uuid,
+    /// Payload digest is a 32 byte containing the SHA-256 hash of the payload.
+    payload_digest: Vec<u8>, // TODO: document
     /// TODO: document
     payload_type: PayloadType,
+    /// Payload length is an 4 byte unsigned integer containing the byte length of data in the Payload field.
+    payload_length: u32,
+    /// Payload is a variable length byte data.
     payload: Vec<u8>, // TODO: change to use a slice instead of a Vec<u8> to avoid heap allocation
 }
 
 impl ClientMessage {
     /// `new` creates a new `ClientMessage` with the given `message_type` and `flags`. The `create_date` is set to the current UTC time.
-    #[must_use]
+    ///
+    /// ## Errors
+    ///
+    /// The payload length must be less than 2^32 - 1. If the payload length is greater than this, an error will be returned.
     pub fn new(
         message_type: MessageType,
         flags: Flags,
         payload_type: PayloadType,
         payload: Vec<u8>,
         sequence_number: i64,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, Error> {
+        // Create a Sha256 object
+        let mut hasher = Sha256::new();
+
+        // Write input message
+        hasher.update(&payload);
+
+        // Read hash digest and consume hasher
+        let payload_digest = hasher.finalize().to_vec();
+        let message = Self {
+            header_length: Self::HEADER_LENGTH,
             message_type,
             schema_version: 1,
             create_date: Utc::now(),
             flags,
             message_id: uuid::Uuid::new_v4(),
             payload_type,
+            payload_length: u32::try_from(payload.len())?, // TODO: handle error
             payload,
             sequence_number,
-        }
+            payload_digest,
+        };
+
+        Ok(message)
     }
+
+    /// Confirm whether the message is valid or not. This matches the original implementation,
+    /// but we intend to remove this in favor or validataing the message in the parser.
+    ///
+    /// ## Errors
+    ///
+    /// TODO
+    pub fn validate(&self) -> Result<(), Error> {
+        if matches!(
+            self.message_type,
+            MessageType::StartPublicationMessage | MessageType::PausePublicationMessage
+        ) {
+            return Ok(());
+        }
+
+        if self.header_length == 0 {
+            Err(Error::ZeroLengthHeader)?;
+        }
+
+        // Original implementation checked if message_type is missing, but we validate it in the parser so we skip checking here
+        // Original implementation also checked create_date, but we also validate it in the parser
+
+        if self.payload_length != 0 {
+            let mut hasher = Sha256::new();
+            hasher.update(self.payload.as_slice());
+            let hash = hasher.finalize();
+
+            if hash.to_vec() != self.payload_digest {
+                Err(Error::InvalidPayloadHash)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, thiserror::Error, PartialEq)]
+/// `Error` represents the error type for `ClientMessage`
+pub enum Error {
+    /// TODO
+    #[error("HeaderLength cannot be zero")]
+    ZeroLengthHeader,
+
+    /// TODO
+    #[error("payload Hash is not valid")]
+    InvalidPayloadHash,
+
+    /// TODO
+    #[error("Failed to parse message: {0}")]
+    ParseError(#[from] message_parser::Error),
+
+    /// TODO
+    #[error("Failed to convert payload length to 32-bit integer: {0}")]
+    InvalidPayloadLength(#[from] std::num::TryFromIntError),
 }
 
 #[allow(dead_code)]
@@ -158,11 +238,63 @@ bitflags! {
     }
 }
 
+impl Default for Flags {
+    fn default() -> Self {
+        Flags::empty()
+    }
+}
+
 impl Debug for Flags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Flags")
             .field("SYN", &self.contains(Flags::SYN))
             .field("FIN", &self.contains(Flags::FIN))
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use sha2::{Digest, Sha256};
+    use uuid::Uuid;
+
+    const MESSAGE_ID: &str = "dd01e56b-ff48-483e-a508-b5f073f31b16";
+    const SCHEMA_VERSION: u32 = 1;
+    const PAYLOAD: &[u8; 7] = b"payload";
+
+    // TODO: use typestate to make invalid messages impossible to create
+    #[test]
+    fn test_client_message_validate() {
+        let uuid: Uuid = MESSAGE_ID.parse().expect("message id should be valid uuid");
+
+        let mut message = super::ClientMessage {
+            schema_version: SCHEMA_VERSION,
+            sequence_number: 1,
+            flags: super::Flags::FIN,
+            message_id: uuid,
+            payload_length: 3,
+            payload: PAYLOAD.to_vec(),
+            ..Default::default()
+        };
+
+        let result = message.validate().expect_err("message should be invalid");
+        assert_eq!(result, super::Error::ZeroLengthHeader);
+
+        // Note: skipping message type check because it will be handled in the parser
+
+        // Note: skipping create date check because it will be handled in the parser
+
+        message.header_length = 1;
+
+        let result = message.validate().expect_err("message should be invalid");
+        assert_eq!(result, super::Error::InvalidPayloadHash);
+
+        let mut hasher = Sha256::new();
+        hasher.update(PAYLOAD.as_slice());
+        let hash = hasher.finalize();
+
+        message.payload_digest = hash.to_vec();
+
+        message.validate().expect("message should be valid");
     }
 }

@@ -284,7 +284,8 @@ where
             payload_type,
             input_data.to_vec(), // TODO: remove allocations by using a slice or array instead of a vector
             (*self.stream_data_sequence_number.borrow()).into(), // TODO: understand why message uses a i64 and not a u32
-        );
+        )
+        .map_err(crate::Error::InvalidClientMessage)?;
 
         log::trace!(
             "Sending message with seq number: {}",
