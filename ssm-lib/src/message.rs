@@ -297,4 +297,24 @@ mod test {
 
         message.validate().expect("message should be valid");
     }
+
+    #[test]
+    fn validate_start_publication_message() {
+        let uuid: Uuid = MESSAGE_ID.parse().expect("message id should be valid uuid");
+
+        let message = super::ClientMessage {
+            schema_version: SCHEMA_VERSION,
+            sequence_number: 1,
+            flags: super::Flags::FIN,
+            message_id: uuid,
+            payload_length: 3,
+            payload: PAYLOAD.to_vec(),
+            message_type: super::MessageType::StartPublicationMessage,
+            ..Default::default()
+        };
+
+        let result = message.validate();
+
+        assert!(result.is_ok(), "message should be valid");
+    }
 }
