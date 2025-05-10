@@ -11,13 +11,14 @@ categories = ["web-programming"]
 
 [dependencies]
 bitflags = { workspace = true }
-chrono = "0.4.40"
+chrono = { workspace = true }
 log = { workspace = true }
 mockall = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+strum = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 
