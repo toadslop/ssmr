@@ -1,10 +1,10 @@
 //! TODO: document
 
-use std::fmt::Debug;
-
 use bitflags::bitflags;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
+use uuid::Uuid;
 
 mod message_parser;
 
@@ -40,33 +40,50 @@ pub enum PayloadType {
     ExitCode = 12,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
+#[derive(
+    Debug,
+    Serialize,
+    Deserialize,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    strum::Display,
+    strum::IntoStaticStr,
+)]
 /// TODO: document
 pub enum MessageType {
     /// `InputStreamMessage` represents message type for input data
     #[serde(rename = "input_stream_data")]
+    #[strum(to_string = "input_stream_data")]
     #[default]
     InputStreamMessage,
 
     /// `OutputStreamMessage` represents message type for output data
     #[serde(rename = "output_stream_data")]
+    #[strum(to_string = "output_stream_data")]
     OutputStreamMessage,
 
     /// `AcknowledgeMessage` represents message type for acknowledge
     #[serde(rename = "acknowledge")]
+    #[strum(to_string = "acknowledge")]
     AcknowledgeMessage,
 
     /// `ChannelClosedMessage` represents message type for `ChannelClosed`
     #[serde(rename = "channel_closed")]
+    #[strum(to_string = "channel_closed")]
     ChannelClosedMessage,
 
     /// `StartPublicationMessage` represents the message type that notifies the CLI to start sending stream messages
     #[serde(rename = "start_publication")]
+    #[strum(to_string = "start_publication")]
     StartPublicationMessage,
 
     /// `PausePublicationMessage` represents the message type that notifies the CLI to pause sending stream messages
     /// as the remote data channel is inactive
     #[serde(rename = "pause_publication")]
+    #[strum(to_string = "pause_publication")]
     PausePublicationMessage,
 }
 
@@ -179,9 +196,23 @@ impl ClientMessage {
 
         Ok(())
     }
+
+    #[allow(dead_code)]
+    fn deserialize_data_stream_acknowledge_content(&self) -> Result<AcknowledgeContent, Error> {
+        if self.message_type != MessageType::AcknowledgeMessage {
+            Err(Error::InvalidMessageType {
+                expected: MessageType::AcknowledgeMessage,
+                actual: self.message_type,
+            })?;
+        }
+
+        let message: AcknowledgeContent = serde_json::from_slice(self.payload.as_slice())?;
+
+        Ok(message)
+    }
 }
 
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error)]
 /// `Error` represents the error type for `ClientMessage`
 pub enum Error {
     /// TODO
@@ -199,6 +230,19 @@ pub enum Error {
     /// TODO
     #[error("Failed to convert payload length to 32-bit integer: {0}")]
     InvalidPayloadLength(#[from] std::num::TryFromIntError),
+
+    /// TODO
+    #[error("Could not deserialize rawMessage: {0}")]
+    DeserializeError(#[from] serde_json::Error),
+
+    /// TODO
+    #[error("ClientMessage is not of type {expected}. Found message type: {actual}")]
+    InvalidMessageType {
+        /// The expected message type
+        expected: MessageType,
+        /// The actual message type
+        actual: MessageType,
+    },
 }
 
 #[allow(dead_code)]
@@ -253,32 +297,69 @@ impl Debug for Flags {
     }
 }
 
+/// `AcknowledgeContent` is used to inform the sender of an acknowledge message that the message has been received.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AcknowledgeContent {
+    /// A 32 byte UTF-8 string containing the message type.
+    #[serde(rename = "AcknowledgedMessageType")]
+    message_type: MessageType,
+
+    /// a 40 byte UTF-8 string containing the UUID identifying this message being acknowledged.
+    #[serde(rename = "AcknowledgedMessageId")]
+    message_id: Uuid,
+
+    /// an 8 byte integer containing the message sequence number for serialized message.
+    #[serde(rename = "AcknowledgedMessageSequenceNumber", default)]
+    sequence_number: i64,
+
+    /// a boolean field representing whether the acknowledged message is part of a sequence
+    #[serde(rename = "IsSequentialMessage", default)]
+    is_sequential_message: bool,
+}
+
 #[cfg(test)]
 mod test {
     use sha2::{Digest, Sha256};
     use uuid::Uuid;
 
-    const MESSAGE_ID: &str = "dd01e56b-ff48-483e-a508-b5f073f31b16";
+    use super::ClientMessage;
+
+    const MESSAGE_ID_RAW: &str = "dd01e56b-ff48-483e-a508-b5f073f31b16";
+    static MESSAGE_ID: std::sync::LazyLock<Uuid> = std::sync::LazyLock::new(|| {
+        Uuid::parse_str(MESSAGE_ID_RAW).expect("message id should be valid uuid")
+    });
     const SCHEMA_VERSION: u32 = 1;
     const PAYLOAD: &[u8; 7] = b"payload";
+
+    static ACK_MESSAGE_PAYLOAD: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
+        format!(
+            r#"
+        {{
+            "AcknowledgedMessageType": "{}",
+            "AcknowledgedMessageId": "{MESSAGE_ID_RAW}"
+        }}
+        "#,
+            super::MessageType::AcknowledgeMessage
+        )
+        .as_bytes()
+        .to_vec()
+    });
 
     // TODO: use typestate to make invalid messages impossible to create
     #[test]
     fn test_client_message_validate() {
-        let uuid: Uuid = MESSAGE_ID.parse().expect("message id should be valid uuid");
-
         let mut message = super::ClientMessage {
             schema_version: SCHEMA_VERSION,
             sequence_number: 1,
             flags: super::Flags::FIN,
-            message_id: uuid,
+            message_id: *MESSAGE_ID,
             payload_length: 3,
             payload: PAYLOAD.to_vec(),
             ..Default::default()
         };
 
         let result = message.validate().expect_err("message should be invalid");
-        assert_eq!(result, super::Error::ZeroLengthHeader);
+        assert!(matches!(result, super::Error::ZeroLengthHeader));
 
         // Note: skipping message type check because it will be handled in the parser
 
@@ -287,7 +368,7 @@ mod test {
         message.header_length = 1;
 
         let result = message.validate().expect_err("message should be invalid");
-        assert_eq!(result, super::Error::InvalidPayloadHash);
+        assert!(matches!(result, super::Error::InvalidPayloadHash));
 
         let mut hasher = Sha256::new();
         hasher.update(PAYLOAD.as_slice());
@@ -300,13 +381,11 @@ mod test {
 
     #[test]
     fn validate_start_publication_message() {
-        let uuid: Uuid = MESSAGE_ID.parse().expect("message id should be valid uuid");
-
         let message = super::ClientMessage {
             schema_version: SCHEMA_VERSION,
             sequence_number: 1,
             flags: super::Flags::FIN,
-            message_id: uuid,
+            message_id: *MESSAGE_ID,
             payload_length: 3,
             payload: PAYLOAD.to_vec(),
             message_type: super::MessageType::StartPublicationMessage,
@@ -316,5 +395,35 @@ mod test {
         let result = message.validate();
 
         assert!(result.is_ok(), "message should be valid");
+    }
+
+    #[test]
+    fn test_deserialize_data_stream_acknowledge_content() {
+        let mut test_message = ClientMessage {
+            payload: PAYLOAD.to_vec(),
+            ..Default::default()
+        };
+
+        let result = test_message.deserialize_data_stream_acknowledge_content();
+
+        assert!(matches!(
+            result,
+            Err(super::Error::InvalidMessageType { .. })
+        ));
+
+        test_message.message_type = super::MessageType::AcknowledgeMessage;
+
+        let result = test_message.deserialize_data_stream_acknowledge_content();
+
+        assert!(matches!(result, Err(super::Error::DeserializeError(_))));
+
+        test_message.payload = ACK_MESSAGE_PAYLOAD.clone();
+
+        let result = test_message
+            .deserialize_data_stream_acknowledge_content()
+            .expect("msg should be valid");
+
+        assert_eq!(result.message_type, super::MessageType::AcknowledgeMessage);
+        assert_eq!(result.message_id, *MESSAGE_ID);
     }
 }
